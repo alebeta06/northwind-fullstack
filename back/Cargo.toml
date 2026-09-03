@@ -1,0 +1,45 @@
+[package]
+name = "back"
+version = "0.1.0"
+edition = "2021"
+
+# 🇪🇸 NOTA (edition): fijamos edition 2021 a propósito, aunque el toolchain (Rust 1.98)
+# ya soporta la 2024. El material del curso está escrito para 2021 y algunos ejemplos
+# dependen de reglas viejas (p. ej. la captura de variables en closures y el `unsafe`
+# implícito en `std::env::set_var`, que en 2024 cambian). Mantenerlo en 2021 evita
+# diferencias entre lo que compila aquí y lo que aparece en los apuntes.
+
+[dependencies]
+
+# Rocket 0.5.x es la primera versión estable "async" (sobre Tokio).
+#
+# 🇪🇸 NOTA (rocket_contrib está MUERTO): en Rocket 0.4 el JSON venía en un crate aparte
+# llamado `rocket_contrib` (`rocket_contrib::json::Json`). Desde 0.5 ese crate ya no
+# existe: se absorbió dentro de `rocket` detrás de features. Por eso aquí activamos
+# `features = ["json"]` y el tipo pasa a ser `rocket::serde::json::Json`.
+# Si un ejemplo del curso escribe `extern crate rocket_contrib`, está desactualizado.
+rocket = { version = "0.5.1", features = ["json"] }
+
+# `derive` habilita `#[derive(Serialize, Deserialize)]`, que necesitaremos en `models.rs`.
+serde = { version = "1.0", features = ["derive"] }
+
+# 🇪🇸 NOTA: `rocket/json` ya arrastra `serde_json` de forma transitiva, pero lo declaramos
+# explícitamente porque lo vamos a usar DIRECTAMENTE (macro `json!` para los cuerpos de
+# error). Depender de un crate por accidente, vía la feature de otro, es frágil: si
+# mañana Rocket cambiara esa feature, dejaría de compilar sin motivo aparente.
+serde_json = "1.0"
+
+# 🇪🇸 NOTA (por qué `bundled` no es opcional aquí):
+#   1. Esta máquina NO tiene `libsqlite3-dev` (no existe /usr/include/sqlite3.h), así que
+#      sin `bundled` el enlazado falla directamente.
+#   2. `bundled` compila SQLite desde su código C (vía libsqlite3-sys) y lo enlaza
+#      estáticamente => build reproducible, sin depender de la versión de SQLite del SO.
+#
+# 🇪🇸 NOTA (trampa de rusqlite 0.40): en esta versión las features por defecto son
+# `["cache", "ffi-sqlite-wasm-rs"]` y `bundled` se declara como
+# `bundled = ["libsqlite3-sys?/bundled", "modern_sqlite"]`. Ese `?` asusta (parece que
+# `bundled` no haría nada si `libsqlite3-sys` estuviera desactivado), pero en targets
+# NO-wasm `libsqlite3-sys` es una dependencia obligatoria por target y `sqlite-wasm-rs`
+# ni siquiera existe. Conclusión: en Linux esto es correcto tal cual, y NO hace falta
+# `default-features = false`.
+rusqlite = { version = "0.40", features = ["bundled"] }

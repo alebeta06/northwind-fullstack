@@ -1,0 +1,24 @@
+# Base de datos (se descarga aparte, ver README)
+back/northwind.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Rust
+back/target/
+**/*.rs.bk
+
+# Node / Next.js
+front/node_modules/
+front/.next/
+front/out/
+front/.env
+front/.env.local
+
+# Sistema
+.DS_Store
+*:Zone.Identifier
+
+# Herramientas locales
+.claude-flow/
+.claude/
