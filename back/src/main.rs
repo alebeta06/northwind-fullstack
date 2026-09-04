@@ -28,6 +28,13 @@ extern crate rocket;
 mod cors;
 mod db;
 
+// 🇪🇸 NOTA (`#[cfg(test)]`): este módulo SOLO se compila cuando se ejecuta `cargo test`. En
+// el binario de release no existe: ni el código, ni la dependencia de `rocket::local`, ni
+// un byte de más. Es la forma de tener los tests dentro del crate —que aquí es obligado,
+// porque un `tests/` externo no puede importar un binario— sin que viajen al despliegue.
+#[cfg(test)]
+mod tests;
+
 // 🇪🇸 NOTA (aquí hubo un `#[allow(dead_code)]`, y ya no queda ninguno en el proyecto):
 // silenciaba los cinco warnings de `models.rs` mientras el CRUD no existía. Según fueron
 // llegando las rutas, el atributo se fue mudando a los structs que aún no se usaban
