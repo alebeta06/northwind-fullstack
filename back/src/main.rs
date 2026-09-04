@@ -25,29 +25,28 @@ extern crate rocket;
 
 mod db;
 
-// 🇪🇸 NOTA (el `#[allow(dead_code)]` que había aquí ya no está): cubría a `Customer`,
-// `Paginated`, `Customer::from_row` y `Customer::COLUMNS`, que `GET /customers` ya usa.
-// Un silenciador vive exactamente lo que dura su motivo; el de este módulo se ha quedado
-// sin motivo y por eso desaparece.
+// 🇪🇸 NOTA (aquí hubo un `#[allow(dead_code)]`, y ya no queda ninguno en el proyecto):
+// silenciaba los cinco warnings de `models.rs` mientras el CRUD no existía. Según fueron
+// llegando las rutas, el atributo se fue mudando a los structs que aún no se usaban
+// —primero a `NewCustomer` y `UpdateCustomer`, luego solo a `UpdateCustomer`— hasta
+// desaparecer con el PUT.
 //
-// ⚠️ `NewCustomer` y `UpdateCustomer` siguen sin usarse hasta que lleguen POST y PUT, así
-// que el `#[allow]` no se ha borrado: se ha MUDADO a esos dos structs concretos, en
-// `models.rs`. Es un cambio a mejor, aunque quede menos a la vista: un `allow` sobre el
-// módulo entero tapa también el código muerto que aparezca por accidente; uno sobre cada
-// struct solo tapa lo que nombra, y desaparece con el commit que implemente su ruta.
+// Que ese recorrido termine en cero es el punto: un `allow` con una condición de salida
+// escrita al lado se acaba borrando; uno puesto "por ahora" en la cabecera del módulo se
+// queda para siempre y, el día que de verdad sobre código, nadie se entera.
 mod models;
 
 use rocket::fairing::AdHoc;
 use rocket::http::Status;
 use rocket::request::Request;
-use rocket::response::status::Created;
+use rocket::response::status::{Created, NoContent};
 use rocket::response::{self, Responder};
 use rocket::serde::json::{json, Json, Value};
 use rocket::{FromForm, State};
-use rusqlite::{params, ErrorCode, ToSql};
+use rusqlite::{params, Connection, ErrorCode, ToSql};
 
 use db::Db;
-use models::{Customer, NewCustomer, Paginated};
+use models::{Customer, NewCustomer, Paginated, UpdateCustomer};
 
 // ═══════════════════════════════════════════════════════════════════
 //  Constantes de configuración
@@ -425,6 +424,19 @@ impl ApiError {
     /// 400 — the request itself is wrong; retrying it unchanged will fail again.
     fn bad_request(code: &'static str, message: impl Into<String>) -> Self {
         ApiError::new(Status::BadRequest, code, message)
+    }
+
+    /// 404 — the id is well-formed but no such customer exists.
+    ///
+    /// 🇪🇸 NOTA: el id se refleja en el mensaje, y es seguro: llega aquí después de pasar
+    /// por `normalize_customer_id`, así que son exactamente 5 caracteres alfanuméricos
+    /// ASCII. No hay nada que escapar porque no hay nada que se pueda colar.
+    fn not_found(id: &str) -> Self {
+        ApiError::new(
+            Status::NotFound,
+            "not_found",
+            format!("no customer with id '{id}'"),
+        )
     }
 
     /// 500 — logs the real cause and returns a deliberately vague message.
@@ -867,14 +879,8 @@ fn create_customer(
     // REALMENTE hay en disco, no lo que yo creo que escribí. Si un DEFAULT, un trigger o
     // una conversión de tipo cambiara algo por el camino, el cliente lo vería. Es la misma
     // idea que verificar `/health` en vez de fiarse de que el arranque fue bien.
-    let select_sql = format!(
-        "SELECT {} FROM Customers WHERE CustomerID = ?1",
-        Customer::COLUMNS
-    );
-
-    let created = conn
-        .query_row(&select_sql, params![customer_id], Customer::from_row)
-        .map_err(|e| ApiError::internal("re-reading the created row failed", e))?;
+    let created = find_customer(&conn, &customer_id)
+        .map_err(|e| ApiError::internal("POST /customers · re-read", e))?;
 
     // 🇪🇸 NOTA (`Created`, verificado en la documentación de Rocket 0.5.1): se construye con
     // `Created::new(location)` —el string se pone TAL CUAL en la cabecera `Location`— y el
@@ -885,6 +891,277 @@ fn create_customer(
     // No se usa aquí porque exige `R: Hash` y `Json<Customer>` no lo implementa; tendría
     // sentido el día que haya cachés o peticiones condicionales de por medio.
     Ok(Created::new(format!("/customers/{customer_id}")).body(Json(created)))
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Operaciones sobre UN cliente — GET / PUT / DELETE por id
+// ═══════════════════════════════════════════════════════════════════
+
+/// Reads a single customer, using the caller's already-acquired lock.
+///
+/// 🇪🇸 NOTA (por qué recibe `&Connection` y no `&State<Db>`): si esta función pidiera el
+/// estado, tendría que hacer el `.lock()` ella misma — y entonces sería IMPOSIBLE usarla
+/// dentro de una operación que ya tiene el lock cogido. Peor: `std::sync::Mutex` no es
+/// reentrante, así que un segundo `.lock()` desde el mismo hilo no da error, se queda
+/// colgado para siempre. Un interbloqueo de una sola línea.
+///
+/// Recibiendo la conexión prestada, quien manda sobre el lock es SIEMPRE la ruta, que es
+/// la que sabe cuánto tiene que durar la sección crítica. Esta función solo lee. El
+/// `MutexGuard` se convierte en `&Connection` solo con pasarlo, por el `Deref` de la
+/// guarda.
+///
+/// 🇪🇸 NOTA: devuelve `rusqlite::Result` y no `Result<_, ApiError>` a propósito. "No hay
+/// fila" significa cosas distintas según quién pregunte: en el `GET /customers/<id>` es un
+/// 404 legítimo; justo después de un INSERT o un UPDATE con éxito es un 500, porque
+/// implica que la fila que acabo de escribir se ha esfumado bajo mi propio lock. Traducir
+/// el error aquí obligaría a todos a compartir la misma interpretación, y no la comparten.
+fn find_customer(conn: &Connection, id: &str) -> rusqlite::Result<Customer> {
+    let sql = format!(
+        "SELECT {} FROM Customers WHERE CustomerID = ?1",
+        Customer::COLUMNS
+    );
+    conn.query_row(&sql, params![id], Customer::from_row)
+}
+
+/// Fetches one customer by id.
+///
+/// `GET /customers/<id>` → 200 + the customer, or 404.
+///
+/// 🇪🇸 NOTA (`<id>` es un "parameter guard"): Rocket saca el segmento de la URL y lo
+/// convierte al tipo del parámetro con el trait `FromParam`. Con `&str` acepta cualquier
+/// segmento; si el tipo fuera `usize`, una URL con letras simplemente no casaría con la
+/// ruta (y acabaría en el catcher del 404). Aquí se usa `&str` porque los ids de Northwind
+/// son texto, y la validación de forma la hace `normalize_customer_id`, que da un mensaje
+/// mucho más útil que un 404 mudo.
+///
+/// ⚠️ Un id mal formado (`/customers/xx`) devuelve 400, no 404. Es deliberado: "lo que
+/// pides no puede existir" y "lo que pides no está aquí" son diagnósticos distintos, y al
+/// cliente le sirve más el primero. Un 404 le haría buscar el cliente; el 400 le dice que
+/// mire cómo construye la URL.
+#[get("/customers/<id>")]
+fn get_customer(db: &State<Db>, id: &str) -> Result<Json<Customer>, ApiError> {
+    // 🇪🇸 NOTA: la MISMA normalización que el POST, y por el mismo motivo. Si el POST
+    // guarda siempre en mayúsculas pero el GET busca tal cual, `/customers/alfki` daría
+    // 404 sobre un cliente que existe — un bug desconcertante que además solo aparece
+    // según cómo escriba el usuario la URL. Las dos rutas tienen que compartir la idea de
+    // qué es "el mismo id"; compartir la función es la forma de que no se separen.
+    let id = normalize_customer_id(id)?;
+
+    let conn = db
+        .0
+        .lock()
+        .expect("the SQLite mutex was poisoned by a panicking thread");
+
+    // 🇪🇸 NOTA (POR QUÉ SE DISTINGUE `QueryReturnedNoRows` DEL RESTO): `query_row` devuelve
+    // `Err` en los dos casos, pero significan cosas opuestas.
+    //
+    //   · `QueryReturnedNoRows` → la consulta funcionó PERFECTAMENTE. Simplemente no hay
+    //     ningún cliente con ese id. Eso es un 404: la API está bien, el recurso no está.
+    //   · Cualquier otro error   → la consulta no llegó a ejecutarse o falló a medias
+    //     (disco, esquema, corrupción). Eso sí es un 500.
+    //
+    // Meter los dos en el mismo saco es el error clásico de este endpoint, y tiene
+    // consecuencias reales: un 500 dispara alertas, se reintenta y hace pensar que el
+    // servidor está roto, cuando lo único que pasaba es que el cliente pidió un id que no
+    // existe. El `match` sobre la variante concreta del error es lo que separa "no hay
+    // nada" de "algo va mal".
+    find_customer(&conn, &id).map(Json).map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => ApiError::not_found(&id),
+        other => ApiError::internal("GET /customers/<id> · select", other),
+    })
+}
+
+/// Replaces a customer.
+///
+/// `PUT /customers/<id>` → 200 + the updated customer, or 404.
+///
+/// ═══════════════════════════════════════════════════════════════════
+/// 🇪🇸 NOTA — SEMÁNTICA DE REEMPLAZO TOTAL (PUT ≠ PATCH)
+/// ═══════════════════════════════════════════════════════════════════
+///
+/// Esto es lo más importante que hay que entender de esta ruta, y lo que más veces se
+/// implementa mal: **PUT sustituye el recurso ENTERO por lo que mandas**. No fusiona.
+///
+/// Un campo que no venga en el cuerpo no se queda "como estaba": se queda en NULL. Si el
+/// cliente ALFKI tiene teléfono y mandas un PUT con solo `companyName`, el teléfono
+/// DESAPARECE. No es un bug de esta implementación, es la definición de PUT en HTTP: el
+/// cuerpo es el nuevo estado completo del recurso, y lo que no está en él, no está.
+///
+/// La operación de "cambia solo estos campos y deja el resto" es PATCH, que es un verbo
+/// distinto y no está en el enunciado. Que `UpdateCustomer` tenga los campos como
+/// `Option<String>` puede despistar: ese `Option` distingue "null" de "un texto", no
+/// "ausente" de "presente".
+///
+/// ⚠️ Consecuencia PRÁCTICA para el frontend, que hay que decir en voz alta porque es
+/// donde se pierden datos de verdad: el formulario de edición debe cargarse con TODOS los
+/// campos del cliente (un GET previo) y mandarlos TODOS de vuelta, incluidos los que el
+/// usuario no tocó. Un formulario que solo envíe los campos modificados irá borrando el
+/// resto del registro en cada guardado, silenciosamente y sin un solo error.
+///
+/// 🇪🇸 NOTA (por qué `format = "json"`, igual que el POST): el mismo filtro por el mismo
+/// motivo — rechaza cuerpos que no dicen ser JSON antes de intentar parsearlos, y ahora
+/// que hay catchers, el rechazo sale en JSON y se explica solo.
+#[put("/customers/<id>", format = "json", data = "<payload>")]
+fn update_customer(
+    db: &State<Db>,
+    id: &str,
+    payload: Json<UpdateCustomer>,
+) -> Result<Json<Customer>, ApiError> {
+    let id = normalize_customer_id(id)?;
+    let body = payload.into_inner();
+
+    // ─── 1. Validar, con el mismo rasero que el POST ───
+    //
+    // 🇪🇸 NOTA: un UPDATE persiste igual que un INSERT, así que la validación tiene que ser
+    // idéntica de estricta. Sería absurdo blindar la puerta de entrada y dejar abierta la
+    // de al lado: quien quisiera dejar una empresa sin nombre solo tendría que crearla bien
+    // y editarla mal. Se reutilizan LAS MISMAS funciones, no unas parecidas — dos
+    // validaciones que "hacen lo mismo" acaban divergiendo en cuanto una de las dos cambia.
+    let company_name = require_non_empty(&body.company_name, "invalid_company_name", "companyName")?;
+
+    let contact_name = optional_text(body.contact_name);
+    let contact_title = optional_text(body.contact_title);
+    let address = optional_text(body.address);
+    let city = optional_text(body.city);
+    let region = optional_text(body.region);
+    let postal_code = optional_text(body.postal_code);
+    let country = optional_text(body.country);
+    let phone = optional_text(body.phone);
+    let fax = optional_text(body.fax);
+
+    // ─── 2. UPDATE y SELECT bajo el mismo lock ───
+    let conn = db
+        .0
+        .lock()
+        .expect("the SQLite mutex was poisoned by a panicking thread");
+
+    // 🇪🇸 NOTA: las diez columnas del SET se listan explícitamente y en el mismo orden que
+    // los `?N` y que los parámetros de abajo. `CustomerID` NO está entre ellas: la clave
+    // primaria no se toca en un PUT. Cambiarla no sería "actualizar este cliente" sino
+    // "crear otro y borrar este", que es una operación distinta y con otras consecuencias
+    // (los pedidos apuntan a la clave vieja). El id de la URL solo aparece en el WHERE.
+    const UPDATE_SQL: &str = "UPDATE Customers SET \
+         CompanyName = ?1, ContactName = ?2, ContactTitle = ?3, Address = ?4, City = ?5, \
+         Region = ?6, PostalCode = ?7, Country = ?8, Phone = ?9, Fax = ?10 \
+         WHERE CustomerID = ?11";
+
+    // 🇪🇸 NOTA (`execute` devuelve el NÚMERO DE FILAS AFECTADAS): ese contador es la forma
+    // de saber si el cliente existía, y evita la consulta previa de "¿existe?" — que
+    // además sería incorrecta en un sistema concurrente: entre el SELECT de comprobación y
+    // el UPDATE, otra petición podría borrar la fila. Aquí no hay ventana: la pregunta y
+    // la acción son la MISMA sentencia. Cero filas = no había nada que actualizar.
+    let affected = conn
+        .execute(
+            UPDATE_SQL,
+            params![
+                company_name,
+                contact_name,
+                contact_title,
+                address,
+                city,
+                region,
+                postal_code,
+                country,
+                phone,
+                fax,
+                id
+            ],
+        )
+        .map_err(|e| ApiError::internal("PUT /customers/<id> · update", e))?;
+
+    if affected == 0 {
+        return Err(ApiError::not_found(&id));
+    }
+
+    // 🇪🇸 NOTA: se relee bajo el MISMO lock, por lo mismo que en el POST: sin él, entre el
+    // UPDATE y esta lectura cabría un DELETE de otra petición, y el 200 devolvería un error
+    // al no encontrar la fila que acaba de escribir. Aquí `QueryReturnedNoRows` sí sería un
+    // 500 de pleno derecho —significaría que el mutex no está haciendo su trabajo—, y por
+    // eso todos los errores de esta lectura caen en el mismo saco.
+    let updated = find_customer(&conn, &id)
+        .map_err(|e| ApiError::internal("PUT /customers/<id> · re-read", e))?;
+
+    Ok(Json(updated))
+}
+
+/// Deletes a customer.
+///
+/// `DELETE /customers/<id>` → 204 No Content, 404, or 409 if it has orders.
+///
+/// 🇪🇸 NOTA (`status::NoContent`, verificado en la documentación de Rocket 0.5.1): es un
+/// struct unitario cuyo `Responder` pone el código 204 y deja el cuerpo VACÍO. Devolver
+/// `Json(json!({"deleted": true}))` con un 204 sería una respuesta contradictoria: el 204
+/// significa literalmente "no hay contenido", y un cuerpo ahí es algo que los
+/// intermediarios pueden descartar. Si se quisiera devolver algo, el código correcto sería
+/// 200, no 204.
+///
+/// El tipo en la firma documenta la respuesta: quien lee `Result<NoContent, ApiError>` sabe
+/// que en el camino feliz no hay cuerpo, sin tener que leer el cuerpo de la función.
+#[delete("/customers/<id>")]
+fn delete_customer(db: &State<Db>, id: &str) -> Result<NoContent, ApiError> {
+    let id = normalize_customer_id(id)?;
+
+    let conn = db
+        .0
+        .lock()
+        .expect("the SQLite mutex was poisoned by a panicking thread");
+
+    // ⚠️ El id va parametrizado, como todo lo demás. Un DELETE con el id interpolado es el
+    // ejemplo de libro de por qué la regla no admite excepciones "porque este valor ya
+    // está validado": aquí el precio de equivocarse es una tabla vacía.
+    let affected = conn
+        .execute("DELETE FROM Customers WHERE CustomerID = ?1", params![id])
+        .map_err(|e| match e {
+            // 🇪🇸 NOTA (POR QUÉ ESTE 409 EXISTE, Y POR QUÉ ES EL CASO NORMAL):
+            //
+            // `db.rs` activa `PRAGMA foreign_keys = ON` en cada conexión. Gracias a eso,
+            // borrar un cliente que tiene pedidos falla con `ConstraintViolation` en vez de
+            // dejar filas de `Orders` apuntando a un cliente inexistente. Sin ese PRAGMA
+            // —que SQLite trae DESACTIVADO por defecto— este brazo del `match` no saltaría
+            // nunca y la base se corrompería en silencio.
+            //
+            // Comprobado en el esquema: `Orders.CustomerID → Customers.CustomerID` con
+            // `ON DELETE NO ACTION`, es decir, la restricción se aplica y no cascadea.
+            // (`CustomerCustomerDemo` también referencia a `Customers`.)
+            //
+            // ⚠️ Consecuencia que conviene anticipar antes de que alguien la reporte como
+            // bug: los 93 clientes originales de Northwind TIENEN pedidos —ALFKI tiene
+            // 163—, así que el 409 es la respuesta NORMAL al intentar borrar cualquiera de
+            // ellos. No es que el borrado esté roto: es que borrar un cliente con historial
+            // de pedidos es precisamente lo que la integridad referencial impide. Un
+            // cliente creado por el POST nace sin pedidos y se borra sin problema.
+            //
+            // Y por eso es 409 y no 500: la base hizo su trabajo. El conflicto está entre
+            // lo que pide el cliente y el estado actual de los datos, no en el servidor.
+            rusqlite::Error::SqliteFailure(err, _)
+                if err.code == ErrorCode::ConstraintViolation =>
+            {
+                ApiError::new(
+                    Status::Conflict,
+                    "has_orders",
+                    format!(
+                        "customer '{id}' cannot be deleted because it has associated orders \
+                         — delete or reassign them first"
+                    ),
+                )
+            }
+            other => ApiError::internal("DELETE /customers/<id> · delete", other),
+        })?;
+
+    // 🇪🇸 NOTA: mismo truco que en el PUT — el contador de filas responde a "¿existía?" sin
+    // una consulta previa y sin ventana de carrera.
+    //
+    // ⚠️ Un DELETE sobre algo que no existe podría defenderse como 204 (el borrado es
+    // idempotente: el resultado final es el mismo, no hay cliente con ese id). Aquí se
+    // devuelve 404 porque el enunciado lo pide y porque, para un panel de administración,
+    // "el cliente que ibas a borrar ya no estaba" es información útil: probablemente
+    // signifique que otro operador se te adelantó, o que la lista que estás viendo está
+    // desactualizada.
+    if affected == 0 {
+        return Err(ApiError::not_found(&id));
+    }
+
+    Ok(NoContent)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -973,7 +1250,17 @@ fn rocket() -> _ {
                 }
             }
         }))
-        .mount("/", routes![health, list_customers, create_customer])
+        .mount(
+            "/",
+            routes![
+                health,
+                list_customers,
+                get_customer,
+                create_customer,
+                update_customer,
+                delete_customer
+            ],
+        )
         // 🇪🇸 NOTA (`.register()` y no `.mount()`): las rutas se MONTAN, los catchers se
         // REGISTRAN. Son dos tablas distintas dentro de Rocket, y el primer argumento
         // significa cosas distintas en cada una: en `mount` es el prefijo del path; en

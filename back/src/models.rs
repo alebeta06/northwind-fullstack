@@ -166,13 +166,6 @@ pub struct NewCustomer {
 /// 🇪🇸 NOTA: no lleva `customer_id`. El ID viene en la URL, no en el
 /// cuerpo. Si estuviera en ambos sitios tendrías que decidir qué hacer
 /// cuando no coinciden — un caso borde que se evita no creándolo.
-///
-/// ⚠️ 🇪🇸 NOTA (`#[allow(dead_code)]` con fecha de caducidad): este struct todavía no lo
-/// usa nadie — su ruta llega en el siguiente paso. El atributo evita que un warning de
-/// código muerto, que ya sabemos que está ahí, ahogue a los warnings REALES. Está sobre
-/// el struct concreto y no sobre el módulo a propósito: así solo silencia lo que nombra,
-/// y se borra en el mismo commit que implemente la ruta.
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateCustomer {
