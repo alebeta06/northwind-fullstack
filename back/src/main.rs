@@ -39,12 +39,15 @@ mod models;
 
 use rocket::fairing::AdHoc;
 use rocket::http::Status;
+use rocket::request::Request;
+use rocket::response::status::Created;
+use rocket::response::{self, Responder};
 use rocket::serde::json::{json, Json, Value};
 use rocket::{FromForm, State};
-use rusqlite::ToSql;
+use rusqlite::{params, ErrorCode, ToSql};
 
 use db::Db;
-use models::{Customer, Paginated};
+use models::{Customer, NewCustomer, Paginated};
 
 // ═══════════════════════════════════════════════════════════════════
 //  Constantes de configuración
@@ -388,6 +391,333 @@ fn list_customers(db: &State<Db>, q: ListQuery) -> Result<Json<Paginated<Custome
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  ApiError — un cuerpo JSON para los errores, nunca la página HTML
+// ═══════════════════════════════════════════════════════════════════
+
+/// An API error serialised as `{"error": "...", "message": "..."}`.
+///
+/// 🇪🇸 NOTA (por qué no basta con devolver `Status`): si una ruta devuelve `Status`, Rocket
+/// invoca su "catcher" por defecto, que responde con una PÁGINA HTML. Para un endpoint que
+/// consume un frontend con Axios eso es lo peor de dos mundos: el cliente hace
+/// `response.data.message` sobre un string que empieza por `<!DOCTYPE html>` y lo que ve
+/// el usuario es "undefined". Un contrato de API serio dice que TODA respuesta, incluidos
+/// los fallos, viene en el mismo formato.
+///
+/// ⚠️ Esto cubre los errores que produce ESTE código. Los que produce Rocket ANTES de
+/// llegar aquí (un JSON malformado, una ruta inexistente) siguen saliendo en HTML, porque
+/// los genera el catcher por defecto. Arreglarlo son unos `#[catch]` propios; queda
+/// pendiente y documentado, que es distinto de estar tapado.
+pub struct ApiError {
+    status: Status,
+    /// 🇪🇸 NOTA: `&'static str` otra vez, y por el mismo motivo que en `sort_column`: el
+    /// código de error es un identificador ESTABLE contra el que el frontend programa
+    /// (`if (err.error === "duplicate_id")`). Que sea un literal de compilación garantiza
+    /// que nunca se cuela ahí un fragmento de la entrada del usuario ni del error interno.
+    code: &'static str,
+    message: String,
+}
+
+impl ApiError {
+    fn new(status: Status, code: &'static str, message: impl Into<String>) -> Self {
+        ApiError { status, code, message: message.into() }
+    }
+
+    /// 400 — the request itself is wrong; retrying it unchanged will fail again.
+    fn bad_request(code: &'static str, message: impl Into<String>) -> Self {
+        ApiError::new(Status::BadRequest, code, message)
+    }
+
+    /// 500 — logs the real cause and returns a deliberately vague message.
+    ///
+    /// 🇪🇸 NOTA (por qué el error real NO viaja al cliente): el mensaje de rusqlite dice
+    /// cosas como `no such column: Fax` o `UNIQUE constraint failed: Customers.CustomerID`.
+    /// Eso es un mapa del esquema servido gratis a cualquiera que sepa provocar un fallo:
+    /// nombres de tabla, de columna y de índice. El detalle va al log del servidor, donde
+    /// lo necesito yo para depurar; al cliente le llega que algo falló y que no es culpa
+    /// suya. La asimetría es deliberada.
+    fn internal(context: &str, error: impl std::fmt::Display) -> Self {
+        eprintln!("[POST /customers] {context}: {error}");
+        ApiError::new(
+            Status::InternalServerError,
+            "database_error",
+            "the request could not be completed due to an internal error",
+        )
+    }
+}
+
+/// 🇪🇸 NOTA (`Responder`): este trait es lo que convierte un valor de Rust en una respuesta
+/// HTTP. Implementarlo para `ApiError` es lo que permite escribir
+/// `Result<_, ApiError>` como tipo de retorno de la ruta y que Rocket sepa qué hacer con
+/// la variante `Err`.
+///
+/// La conversión se apoya en una propiedad que verifiqué en la documentación de Rocket
+/// 0.5.1 antes de escribir esto: **las tuplas `(Status, R)` son ellas mismas `Responder`**
+/// cuando `R` lo es. Así que no hace falta construir un `Response` a mano campo a campo —
+/// basta con delegar en `(self.status, Json(body))`, que ya sabe poner el código, el
+/// `Content-Type: application/json` y el cuerpo.
+impl<'r> Responder<'r, 'static> for ApiError {
+    fn respond_to(self, req: &'r Request<'_>) -> response::Result<'static> {
+        let body = json!({ "error": self.code, "message": self.message });
+        (self.status, Json(body)).respond_to(req)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  POST /customers — validación y alta
+// ═══════════════════════════════════════════════════════════════════
+
+/// Length of a Northwind customer id (`ALFKI`, `ANATR`, …).
+const CUSTOMER_ID_LEN: usize = 5;
+
+// ═══════════════════════════════════════════════════════════════════
+// 🇪🇸 NOTA — POR QUÉ AQUÍ SE VALIDA CON DUREZA Y EN EL GET NO
+// ═══════════════════════════════════════════════════════════════════
+//
+// En `GET /customers`, un `sortBy` inválido cae al orden por defecto y un `pageSize`
+// absurdo se recorta. Aquí, un `customerId` inválido es un 400 y se acabó. Parece
+// incoherente y no lo es: son dos operaciones con consecuencias distintas.
+//
+//   · El GET PRESENTA datos. Su efecto dura lo que la respuesta, y no deja rastro. Ante
+//     una entrada rara, la opción amable —enseñar algo razonable— no tiene coste: nadie
+//     se queda con datos peores por ello. Rechazar la petición solo serviría para romper
+//     un enlace compartido al que le sobra un parámetro.
+//
+//   · El POST PERSISTE datos. Su efecto sobrevive a la petición, a la sesión y
+//     probablemente a mí. Un "arreglo amable" aquí —aceptar un id de 3 letras, guardar
+//     una empresa sin nombre— no se queda en esta respuesta: se queda EN LA TABLA, y
+//     cada lectura futura arrastra esa basura. Y a diferencia de una respuesta mal
+//     ordenada, no se corrige recargando la página.
+//
+// La regla, que conviene poder decir en voz alta: SÉ PERMISIVO CON LO QUE MUESTRAS,
+// ESTRICTO CON LO QUE GUARDAS. El coste de un error es asimétrico, así que la tolerancia
+// también debe serlo.
+//
+// ⚠️ Y hay un motivo que no es filosófico sino literal, y es el que decide el asunto:
+// el esquema de Northwind NO declara NOT NULL en ninguna columna. Ni siquiera en la clave
+// primaria — en SQLite, un `PRIMARY KEY` sobre una columna que no es INTEGER (y fuera de
+// las tablas STRICT) NO implica NOT NULL; es un bug histórico que se mantiene por
+// compatibilidad. Comprobado con `PRAGMA table_info(Customers)`: las once columnas dan
+// `notnull = 0`.
+//
+// Traducido: la base aceptará encantada un cliente sin id y sin nombre. La ÚNICA barrera
+// que existe entre la entrada del usuario y una tabla corrupta son las funciones que
+// vienen a continuación. No hay una segunda línea de defensa esperando abajo.
+
+/// Trims, upper-cases and validates a customer id.
+///
+/// 🇪🇸 NOTA (por qué se NORMALIZA A MAYÚSCULAS y no solo se valida): la PK de SQLite
+/// compara TEXT byte a byte por defecto, así que `alfki` y `ALFKI` son claves DISTINTAS.
+/// Sin normalizar, el POST aceptaría los dos y la tabla acabaría con dos filas para el
+/// mismo cliente real: la unicidad seguiría siendo cierta para el motor y falsa para el
+/// negocio. Normalizar ANTES de insertar hace que la restricción de la base signifique lo
+/// que la gente cree que significa.
+///
+/// El orden importa: primero `trim`, luego mayúsculas, luego validar. Validar antes de
+/// recortar rechazaría `" alfki "` por tener 7 caracteres.
+fn normalize_customer_id(raw: &str) -> Result<String, ApiError> {
+    let id = raw.trim().to_ascii_uppercase();
+
+    // 🇪🇸 NOTA (`chars().count()` y no `len()`): `len()` devuelve BYTES, no caracteres. Un
+    // id como "ÑUÑEZ" son 5 caracteres pero 7 bytes en UTF-8, y `len() == 5` lo rechazaría
+    // por el motivo equivocado — dando un mensaje de error que miente. Aquí acaba
+    // rechazado igualmente por `is_ascii_alphanumeric`, que es la razón correcta y la que
+    // el mensaje explica.
+    //
+    // Y es `is_ascii_alphanumeric` en vez del `is_alphanumeric` de Unicode a propósito:
+    // este último acepta `٣` (el tres árabe) o `ｱ`, que son alfanuméricos de pleno derecho
+    // y no tienen nada que hacer en una clave de cinco letras de Northwind.
+    let valid = id.chars().count() == CUSTOMER_ID_LEN
+        && id.chars().all(|c| c.is_ascii_alphanumeric());
+
+    if valid {
+        Ok(id)
+    } else {
+        Err(ApiError::bad_request(
+            "invalid_customer_id",
+            "customerId must be exactly 5 alphanumeric ASCII characters (e.g. \"ALFKI\")",
+        ))
+    }
+}
+
+/// Trims a required text field and rejects it if nothing is left.
+fn require_non_empty(raw: &str, code: &'static str, field: &str) -> Result<String, ApiError> {
+    let value = raw.trim();
+    if value.is_empty() {
+        Err(ApiError::bad_request(
+            code,
+            format!("{field} is required and cannot be empty or whitespace-only"),
+        ))
+    } else {
+        Ok(value.to_string())
+    }
+}
+
+/// Trims an optional text field, collapsing "present but empty" into `None`.
+///
+/// 🇪🇸 NOTA (POR QUÉ `""` SE GUARDA COMO NULL): un formulario web manda todos sus campos,
+/// también los que el usuario no rellenó. Sin esta función, la tabla acabaría con dos
+/// representaciones distintas de la misma idea: unas filas con `Region = NULL` (las 93
+/// originales) y otras con `Region = ''` (las creadas desde el formulario).
+///
+/// El daño no es estético. `WHERE Region IS NULL` no encuentra las cadenas vacías y
+/// `WHERE Region = ''` no encuentra los NULL, así que cualquier consulta de "clientes sin
+/// región" devuelve la mitad de la respuesta — y ninguna de las dos falla, que es lo que
+/// lo hace difícil de ver. Los agregados y los `COUNT(Region)` cuentan distinto según por
+/// dónde entró la fila.
+///
+/// "No hay dato" y "el dato es la cadena vacía" son cosas diferentes; mezclarlas en la
+/// misma columna es perder información que ya no se recupera. Se decide UNA representación
+/// —NULL, la que ya usan las 93 filas existentes— y se normaliza en la frontera, aquí.
+fn optional_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Creates a customer.
+///
+/// `POST /customers` → `201 Created`, `Location: /customers/<id>`, body = the new row.
+///
+/// 🇪🇸 NOTA (por qué el 201 lleva CUERPO y no solo la cabecera): el servidor normaliza —
+/// mayúsculas en el id, recortes, cadenas vacías convertidas en NULL—, así que lo que se
+/// ha guardado NO es literalmente lo que se mandó. Devolver la fila tal como quedó ahorra
+/// al cliente un GET inmediato para enterarse, y le enseña qué transformaciones aplica la
+/// API. El `Location` es la otra mitad del contrato: dice DÓNDE vive ahora el recurso.
+///
+/// 🇪🇸 NOTA (por qué NO se pone `format = "json"` en el atributo): sería lo canónico, pero
+/// en Rocket un `format` que no casa hace que la ruta no se seleccione, y la petición
+/// termina en un **404 con la página HTML** de Rocket. Es decir: hoy, olvidar la cabecera
+/// `Content-Type` daría un error que contradice el contrato de "errores siempre en JSON",
+/// y encima uno desorientador (404 en una ruta que existe). En cuanto haya `#[catch]`
+/// propios que devuelvan JSON, añadir `format = "json"` pasa a ser gratis y correcto.
+/// Es una decisión con fecha, no un olvido.
+#[post("/customers", data = "<payload>")]
+fn create_customer(
+    db: &State<Db>,
+    payload: Json<NewCustomer>,
+) -> Result<Created<Json<Customer>>, ApiError> {
+    // 🇪🇸 NOTA: `into_inner()` saca el `NewCustomer` del envoltorio `Json`. A partir de
+    // aquí trabajamos con datos de Rust normales; el wrapper solo servía para que Rocket
+    // supiera cómo leer el cuerpo de la petición.
+    let body = payload.into_inner();
+
+    // ─── 1. Validar y normalizar ANTES de tocar la base ───
+    //
+    // 🇪🇸 NOTA: el `?` corta la ejecución en el primer campo inválido y devuelve el
+    // `ApiError` correspondiente. Nada llega a la conexión hasta que TODOS los campos
+    // están limpios: la base nunca ve una entrada a medio validar, y no hace falta
+    // deshacer nada porque no se empezó.
+    let customer_id = normalize_customer_id(&body.customer_id)?;
+    let company_name = require_non_empty(&body.company_name, "invalid_company_name", "companyName")?;
+
+    let contact_name = optional_text(body.contact_name);
+    let contact_title = optional_text(body.contact_title);
+    let address = optional_text(body.address);
+    let city = optional_text(body.city);
+    let region = optional_text(body.region);
+    let postal_code = optional_text(body.postal_code);
+    let country = optional_text(body.country);
+    let phone = optional_text(body.phone);
+    let fax = optional_text(body.fax);
+
+    // ─── 2. INSERT y SELECT bajo el MISMO lock ───
+    //
+    // 🇪🇸 NOTA (mismo argumento que en el GET, con más filo): entre el INSERT y el SELECT
+    // que lee la fila recién creada, otra petición podría hacer un PUT sobre ese mismo id
+    // —o un DELETE—. Soltando el mutex en medio, el 201 podría devolver datos que el
+    // cliente nunca mandó, o fallar al leer una fila que acaba de crear. Con la guarda
+    // viva durante ambas, "lo que devuelvo" es literalmente "lo que acabo de escribir".
+    let conn = db
+        .0
+        .lock()
+        .expect("the SQLite mutex was poisoned by a panicking thread");
+
+    // 🇪🇸 NOTA: la lista de columnas sale de `Customer::COLUMNS`, la MISMA constante que usa
+    // el SELECT del GET y que define el orden que espera `Customer::from_row`. Los once
+    // `?N` van en ese orden, y por eso el orden de `params![...]` de abajo no es
+    // negociable. Reutilizar la constante evita el fallo clásico de este endpoint: añadir
+    // una columna al modelo y que el INSERT siga con diez, metiendo el teléfono en el país.
+    let insert_sql = format!(
+        "INSERT INTO Customers ({}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        Customer::COLUMNS
+    );
+
+    // ⚠️ Nada de lo que viene del usuario se interpola: `format!` solo monta la parte fija
+    // de la sentencia con una constante mía. Los once valores viajan como parámetros, y un
+    // `Option::None` se convierte solo en NULL — rusqlite implementa `ToSql` para
+    // `Option<T>`, así que no hay que escribir un caso especial para los campos ausentes.
+    conn.execute(
+        &insert_sql,
+        params![
+            customer_id,
+            company_name,
+            contact_name,
+            contact_title,
+            address,
+            city,
+            region,
+            postal_code,
+            country,
+            phone,
+            fax
+        ],
+    )
+    .map_err(|e| match e {
+        // 🇪🇸 NOTA (por qué un 409 y no un 500): el `match guard` (`if err.code == ...`)
+        // distingue el ÚNICO error de base que no es culpa del servidor. Un id repetido
+        // significa "tu petición choca con el estado actual del recurso", que es
+        // exactamente la definición de 409 Conflict. Un 500 diría "me he roto", y sería
+        // mentira: la base funcionó perfectamente e hizo su trabajo.
+        //
+        // La diferencia es operativa, no cosmética. Un 500 despierta a alguien de guardia
+        // y no se debe reintentar; un 409 lo resuelve el propio cliente eligiendo otro id.
+        //
+        // ⚠️ Que esto funcione depende de que la tabla tenga PRIMARY KEY sobre CustomerID.
+        // Comprobado en el esquema: `PRIMARY KEY (CustomerID)`, con su
+        // `sqlite_autoindex_Customers_1`. Si no lo tuviera, el segundo POST con el mismo id
+        // NO daría error: crearía una fila duplicada en silencio, y este brazo del `match`
+        // sería código muerto que da una falsa sensación de seguridad. Nunca des por
+        // supuesta una restricción que no has mirado.
+        rusqlite::Error::SqliteFailure(err, _)
+            if err.code == ErrorCode::ConstraintViolation =>
+        {
+            ApiError::new(
+                Status::Conflict,
+                "duplicate_id",
+                format!("a customer with id '{customer_id}' already exists"),
+            )
+        }
+        other => ApiError::internal("insert failed", other),
+    })?;
+
+    // ─── 3. Releer la fila para devolverla ───
+    //
+    // 🇪🇸 NOTA: se relee en vez de reconstruir el `Customer` en memoria a partir de las
+    // variables. Es una consulta más, y a cambio lo que devuelve la API es lo que
+    // REALMENTE hay en disco, no lo que yo creo que escribí. Si un DEFAULT, un trigger o
+    // una conversión de tipo cambiara algo por el camino, el cliente lo vería. Es la misma
+    // idea que verificar `/health` en vez de fiarse de que el arranque fue bien.
+    let select_sql = format!(
+        "SELECT {} FROM Customers WHERE CustomerID = ?1",
+        Customer::COLUMNS
+    );
+
+    let created = conn
+        .query_row(&select_sql, params![customer_id], Customer::from_row)
+        .map_err(|e| ApiError::internal("re-reading the created row failed", e))?;
+
+    // 🇪🇸 NOTA (`Created`, verificado en la documentación de Rocket 0.5.1): se construye con
+    // `Created::new(location)` —el string se pone TAL CUAL en la cabecera `Location`— y el
+    // cuerpo se adjunta con `.body(responder)`. El responder envuelto es quien fija el
+    // `Content-Type`, y por eso pasamos `Json<Customer>` y no el `Customer` pelado.
+    //
+    // Existe también `.tagged_body()`, que además calcula un `ETag` con el hash del cuerpo.
+    // No se usa aquí porque exige `R: Hash` y `Json<Customer>` no lo implementa; tendría
+    // sentido el día que haya cachés o peticiones condicionales de por medio.
+    Ok(Created::new(format!("/customers/{customer_id}")).body(Json(created)))
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  Arranque
 // ═══════════════════════════════════════════════════════════════════
 
@@ -473,5 +803,5 @@ fn rocket() -> _ {
                 }
             }
         }))
-        .mount("/", routes![health, list_customers])
+        .mount("/", routes![health, list_customers, create_customer])
 }
