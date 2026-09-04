@@ -35,20 +35,11 @@ añadió una entrada al menú.
 
 ```mermaid
 flowchart TD
-    A["Navegador<br/><small>Next.js · puerto 3000</small>"] -->|HTTP| B["GET /customers?page=2<br/><small>método · ruta · parámetros</small>"]
-    B --> C
-
-    subgraph C["back/ — el backend en Rust · Rocket en el puerto 8001"]
-        direction TB
-        D["Enrutador<br/><small>busca en la tabla de rutas · main.rs</small>"]
-        E["Handler<br/><small>valida y arma el SQL · list_customers()</small>"]
-        F["Mutex<br/><small>un hilo a la vez · db.rs</small>"]
-        G["northwind.db<br/><small>archivo SQLite · 93 filas</small>"]
-        D --> E --> F --> G
-    end
-
-    C -->|JSON| H["Respuesta<br/><small>data · total · page · pageSize</small>"]
-    H --> A
+    A["Navegador"] -->|"GET /customers?page=2"| B["Enrutador"]
+    B --> C["Handler"]
+    C --> D["Mutex"]
+    D --> E["SQLite"]
+    E -->|"respuesta JSON"| A
 ```
 
 **Dónde está la API en este dibujo:** no es ninguna de las cajas. Son las dos flechas
@@ -137,14 +128,15 @@ completa —código, `Content-Type` y cuerpo— y sale tal cual.
 
 ## 6. El contrato completo de esta API
 
-| Método | Ruta              | Éxito                       | Errores posibles           |
-| ------ | ----------------- | --------------------------- | -------------------------- |
-| GET    | `/health`         | 200                         | 503 si la base no responde |
-| GET    | `/customers`      | 200 + `Paginated<Customer>` | 500                        |
-| GET    | `/customers/<id>` | 200 + `Customer`            | 404                        |
-| POST   | `/customers`      | 201 + `Location`            | 400, 409, 422, 500         |
-| PUT    | `/customers/<id>` | 200                         | 400, 404, 500              |
-| DELETE | `/customers/<id>` | 204                         | 404, 409 si tiene pedidos  |
+| Método  | Ruta              | Éxito                       | Errores posibles                                                  |
+| ------- | ----------------- | --------------------------- | ----------------------------------------------------------------- |
+| GET     | `/health`         | 200                         | 503 si la base no responde                                        |
+| GET     | `/customers`      | 200 + `Paginated<Customer>` | 500                                                               |
+| GET     | `/customers/<id>` | 200 + `Customer`            | 400, 404, 500                                                     |
+| POST    | `/customers`      | 201 + `Location`            | 400, 409, 422, 500                                                |
+| PUT     | `/customers/<id>` | 200 + `Customer`            | 400, 404, 422, 500                                                |
+| DELETE  | `/customers/<id>` | 204                         | 400, 404, 409 si tiene pedidos, 500                               |
+| OPTIONS | `/<_..>`          | 204                         | — la dispara el preflight del navegador, no el código del cliente |
 
 **Todos los errores comparten la misma forma**, venga del handler o de un catcher:
 
