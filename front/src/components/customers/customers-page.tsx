@@ -106,7 +106,7 @@ export function CustomersPage() {
 
         <Button onClick={() => setCreating(true)}>
           <Plus />
-          New customer
+          Nuevo cliente
         </Button>
       </div>
 
