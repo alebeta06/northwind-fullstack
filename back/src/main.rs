@@ -248,8 +248,13 @@ fn sort_direction(requested: Option<&str>) -> &'static str {
 /// Lists customers with pagination, partial company-name filtering and sorting.
 ///
 /// `GET /customers?page=1&pageSize=10&companyName=ab&sortBy=city&sortDir=desc`
+// 🇪🇸 NOTA (por qué el error ya no es `Status` a secas): devolver `Status` funcionaba —
+// ahora incluso saldría en JSON, porque el catcher del 500 lo recogería—, pero pierde por
+// el camino lo único que distingue un fallo de otro: qué consulta se rompió. Con
+// `ApiError` cada punto de fallo loguea su propio contexto y el cliente sigue recibiendo
+// el mismo cuerpo genérico. El catcher es la red de seguridad, no la primera opción.
 #[get("/customers?<q..>")]
-fn list_customers(db: &State<Db>, q: ListQuery) -> Result<Json<Paginated<Customer>>, Status> {
+fn list_customers(db: &State<Db>, q: ListQuery) -> Result<Json<Paginated<Customer>>, ApiError> {
     // ─── 1. Normalizar la entrada ───
     //
     // 🇪🇸 NOTA: `clamp(1, MAX_PAGE_SIZE)` hace las dos cotas de golpe. Un `pageSize=0`
@@ -318,10 +323,7 @@ fn list_customers(db: &State<Db>, q: ListQuery) -> Result<Json<Paginated<Custome
         Some(p) => conn.query_row(&count_sql, [p], |row| row.get(0)),
         None => conn.query_row(&count_sql, [], |row| row.get(0)),
     }
-    .map_err(|e| {
-        eprintln!("[GET /customers] count query failed: {e}");
-        Status::InternalServerError
-    })?;
+    .map_err(|e| ApiError::internal("GET /customers · count query", e))?;
 
     // ─── 4. SELECT de la página ───
     //
@@ -365,8 +367,9 @@ fn list_customers(db: &State<Db>, q: ListQuery) -> Result<Json<Paginated<Custome
     params.push(&offset);
 
     let mut stmt = conn.prepare(&select_sql).map_err(|e| {
-        eprintln!("[GET /customers] prepare failed ({select_sql}): {e}");
-        Status::InternalServerError
+        // 🇪🇸 NOTA: al log va la sentencia entera, que es lo que de verdad se necesita para
+        // depurar un `prepare` fallido. Al cliente no: la consulta enseña el esquema.
+        ApiError::internal(&format!("GET /customers · prepare ({select_sql})"), e)
     })?;
 
     // 🇪🇸 NOTA (`query_map` + `collect`): `query_map` devuelve un iterador perezoso de
@@ -377,10 +380,7 @@ fn list_customers(db: &State<Db>, q: ListQuery) -> Result<Json<Paginated<Custome
     let data = stmt
         .query_map(rusqlite::params_from_iter(params), Customer::from_row)
         .and_then(|rows| rows.collect::<rusqlite::Result<Vec<Customer>>>())
-        .map_err(|e| {
-            eprintln!("[GET /customers] row query failed: {e}");
-            Status::InternalServerError
-        })?;
+        .map_err(|e| ApiError::internal("GET /customers · row query", e))?;
 
     Ok(Json(Paginated {
         data,
@@ -404,9 +404,9 @@ fn list_customers(db: &State<Db>, q: ListQuery) -> Result<Json<Paginated<Custome
 /// los fallos, viene en el mismo formato.
 ///
 /// ⚠️ Esto cubre los errores que produce ESTE código. Los que produce Rocket ANTES de
-/// llegar aquí (un JSON malformado, una ruta inexistente) siguen saliendo en HTML, porque
-/// los genera el catcher por defecto. Arreglarlo son unos `#[catch]` propios; queda
-/// pendiente y documentado, que es distinto de estar tapado.
+/// llegar aquí (un JSON malformado, una ruta inexistente) no pasan por aquí: los atienden
+/// los `#[catch]` de más abajo, que construyen este MISMO tipo para que el formato de
+/// error sea uno solo en toda la API.
 pub struct ApiError {
     status: Status,
     /// 🇪🇸 NOTA: `&'static str` otra vez, y por el mismo motivo que en `sort_column`: el
@@ -435,8 +435,12 @@ impl ApiError {
     /// nombres de tabla, de columna y de índice. El detalle va al log del servidor, donde
     /// lo necesito yo para depurar; al cliente le llega que algo falló y que no es culpa
     /// suya. La asimetría es deliberada.
+    ///
+    /// 🇪🇸 NOTA: `context` dice QUÉ operación falló ("GET /customers · count query"), y lo
+    /// pone quien llama porque es el único que lo sabe. Sin ese dato, el log de un 500
+    /// sería una línea de rusqlite sin ninguna pista de por dónde entró la petición.
     fn internal(context: &str, error: impl std::fmt::Display) -> Self {
-        eprintln!("[POST /customers] {context}: {error}");
+        eprintln!("[api error] {context}: {error}");
         ApiError::new(
             Status::InternalServerError,
             "database_error",
@@ -460,6 +464,171 @@ impl<'r> Responder<'r, 'static> for ApiError {
         let body = json!({ "error": self.code, "message": self.message });
         (self.status, Json(body)).respond_to(req)
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Catchers — la otra mitad de la historia de errores
+// ═══════════════════════════════════════════════════════════════════
+//
+// 🇪🇸 NOTA — POR QUÉ HACEN FALTA CATCHERS SI YA EXISTE `ApiError`
+//
+// `ApiError` solo puede cubrir los fallos que ocurren DENTRO del handler. Y hay una clase
+// entera de fallos que ocurre ANTES de que el handler llegue a ejecutarse.
+//
+// Recordemos el orden en que Rocket atiende una petición:
+//
+//   1. ROUTING      — busca una ruta cuyo método, path y `format` casen.
+//   2. REQUEST GUARDS — resuelve los parámetros de la firma (`&State<Db>`, `ListQuery`…).
+//   3. DATA GUARD   — lee el cuerpo y lo convierte al tipo pedido (`Json<NewCustomer>`).
+//   4. HANDLER      — ← recién AQUÍ empieza mi código, y por tanto `ApiError`.
+//   5. RESPONDER    — convierte lo devuelto en una respuesta HTTP.
+//
+// Un JSON con una coma de más revienta en el paso 3. Una ruta mal escrita ni siquiera pasa
+// del 1. En ambos casos el cuerpo de `create_customer` NO SE EJECUTA: no hay ningún punto
+// del programa donde yo pueda construir un `ApiError`, porque el flujo nunca entra en mi
+// función. Da igual lo bien escrito que esté el handler.
+//
+// Cuando eso pasa, Rocket se queda con un `Status` y busca un CATCHER para él. Si no hay
+// ninguno registrado, usa el suyo, que responde con una página HTML — la que veíamos en
+// las pruebas del POST. El catcher es el ÚNICO gancho que el framework ofrece para ese
+// tramo del ciclo de vida.
+//
+// Dicho de otra forma: `ApiError` protege la salida de mi código; los catchers protegen
+// todo lo que rodea a mi código. Hacen falta los dos para poder afirmar, sin asteriscos,
+// que esta API responde siempre en JSON.
+//
+// ⚠️ Los catchers NO interceptan un `Status` que forme parte de una respuesta ya
+// construida. Si el handler devuelve un `ApiError` con 400, eso es una respuesta COMPLETA
+// (código, `Content-Type` y cuerpo) y sale tal cual: el catcher del 400 no se entera. Solo
+// se invoca cuando Rocket tiene un status "suelto", sin cuerpo. Por eso el 400 de
+// `invalid_customer_id` conserva su mensaje específico en lugar de convertirse en el
+// genérico "malformed_json" de aquí abajo.
+
+/// 400 — the body could not be parsed at all (broken JSON syntax).
+///
+/// 🇪🇸 NOTA: los catchers devuelven `ApiError`, el MISMO tipo que usan las rutas. No es
+/// pereza: es la garantía de que existe UN solo formato de error en toda la API. Si aquí
+/// se construyera un `json!` a mano, nada impediría que dentro de un mes este dijera
+/// `{"code": …}` y el handler `{"error": …}`, y el frontend tendría que probar las dos
+/// formas en cada `catch`. Con un único tipo, el formato se cambia en un sitio o no se
+/// cambia en ninguno.
+#[catch(400)]
+fn catch_bad_request() -> ApiError {
+    ApiError::new(
+        Status::BadRequest,
+        "malformed_json",
+        "the request body is not valid JSON — check for trailing commas, unquoted keys \
+         or truncated content",
+    )
+}
+
+/// 422 — syntactically valid JSON that does not match the expected shape.
+///
+/// 🇪🇸 NOTA (la diferencia 400 vs 422, que la impone `Json<T>` y no yo): el data guard de
+/// Rocket distingue dos fallos distintos y les da códigos distintos.
+///
+///   · 400 Bad Request         → el texto NI SIQUIERA ES JSON. `serde_json` no pasa del
+///                               analizador léxico.
+///   · 422 Unprocessable Entity → es JSON perfectamente formado, pero no encaja con el
+///                               tipo: falta `companyName`, o `customerId` viene como
+///                               número en vez de string.
+///
+/// La distinción es útil para quien depura: un 400 apunta a cómo se construyó la cadena
+/// (una concatenación, un template roto); un 422 apunta a QUÉ campos se mandaron. Son dos
+/// bugs de naturaleza distinta en el cliente, y merecen mensajes distintos.
+#[catch(422)]
+fn catch_unprocessable() -> ApiError {
+    ApiError::new(
+        Status::UnprocessableEntity,
+        "invalid_payload",
+        "the JSON is well-formed but does not match the expected shape — check that every \
+         required field is present and has the right type",
+    )
+}
+
+/// 404 — no route matched.
+///
+/// 🇪🇸 NOTA (por qué el mensaje habla también del método y del `Content-Type`): un 404 en
+/// Rocket no significa "ese path no existe", sino "ninguna ruta CASA con esta petición", y
+/// el path es solo uno de los criterios. Con `format = "json"` en el POST, mandar el
+/// cuerpo correcto al path correcto pero sin la cabecera `Content-Type: application/json`
+/// también acaba aquí. El mensaje lo dice para que quien lo lea no pierda media hora
+/// mirando la URL, que está bien.
+#[catch(404)]
+fn catch_not_found(req: &Request<'_>) -> ApiError {
+    ApiError::new(
+        Status::NotFound,
+        "not_found",
+        // 🇪🇸 NOTA: reflejar la URI que pidió el cliente es información SUYA, no mía — no
+        // filtra nada del servidor. Y va dentro de un valor JSON generado por `serde`, que
+        // escapa comillas y barras invertidas, así que no puede romper la estructura del
+        // documento ni inyectar nada. Reflejar la entrada es seguro cuando sabes en qué
+        // contexto se serializa; el problema aparece al meterla en HTML sin escapar, que
+        // es justo lo que esta API nunca hace.
+        format!(
+            "no route matches {} {} — check the path, the HTTP method and, for requests \
+             with a body, the Content-Type header",
+            req.method(),
+            req.uri()
+        ),
+    )
+}
+
+/// 500 — something broke inside Rocket or in a handler that returned a bare status.
+///
+/// 🇪🇸 NOTA: en la práctica este catcher casi no salta, porque los 500 de las rutas ya
+/// salen como `ApiError::internal` (respuesta completa, no un status suelto). Cubre lo que
+/// queda: un panic dentro de un handler, que Rocket captura y convierte en un 500 sin
+/// cuerpo. Que sea raro no lo hace prescindible — es precisamente el caso en el que menos
+/// ganas tienes de descubrir que la API contesta HTML.
+#[catch(500)]
+fn catch_internal() -> ApiError {
+    ApiError::new(
+        Status::InternalServerError,
+        "internal_error",
+        "the request could not be completed due to an internal error",
+    )
+}
+
+/// Fallback for every status without a dedicated catcher.
+///
+/// 🇪🇸 NOTA (por qué un `default` además de los cuatro anteriores): los específicos cubren
+/// lo que sé que va a pasar. El `default` cubre lo que no. Hoy mismo ya tiene trabajo: el
+/// 503 de `/health` cuando la base no responde, y el 405 que devolvería un `DELETE` sobre
+/// una ruta que solo acepta GET. Sin él, cada status nuevo que aparezca en el futuro
+/// —porque se añada una ruta, un guard o una versión de Rocket— vuelve a salir en HTML sin
+/// que nadie se dé cuenta. Una lista de casos concretos siempre está incompleta; la
+/// pregunta no es si aparecerá uno nuevo, sino cuándo.
+///
+/// 🇪🇸 NOTA (la firma la fija Rocket): un catcher `default` recibe `(Status, &Request)` —
+/// necesita el status porque, a diferencia de los específicos, no lo conoce de antemano.
+/// Los específicos pueden tomar `(&Request)`, `()` o también el status; aquí el primero se
+/// deja sin argumentos porque el mensaje es fijo.
+///
+/// ⚠️ El `code` no puede derivarse del status: es `&'static str` a propósito (ver el
+/// struct `ApiError`), y un slug como `"service_unavailable"` habría que construirlo en
+/// tiempo de ejecución. Así que el default clasifica por FAMILIA —`client_error` o
+/// `server_error`—, que es una distinción estable y honesta, y deja el detalle numérico
+/// para el `message`. Prefiero un código impreciso pero cierto a uno inventado.
+#[catch(default)]
+fn catch_default(status: Status, req: &Request<'_>) -> ApiError {
+    let code = if status.code < 500 {
+        "client_error"
+    } else {
+        "server_error"
+    };
+
+    ApiError::new(
+        status,
+        code,
+        format!(
+            "{} {} failed with status {} {}",
+            req.method(),
+            req.uri(),
+            status.code,
+            status.reason_lossy()
+        ),
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -584,14 +753,15 @@ fn optional_text(value: Option<String>) -> Option<String> {
 /// al cliente un GET inmediato para enterarse, y le enseña qué transformaciones aplica la
 /// API. El `Location` es la otra mitad del contrato: dice DÓNDE vive ahora el recurso.
 ///
-/// 🇪🇸 NOTA (por qué NO se pone `format = "json"` en el atributo): sería lo canónico, pero
-/// en Rocket un `format` que no casa hace que la ruta no se seleccione, y la petición
-/// termina en un **404 con la página HTML** de Rocket. Es decir: hoy, olvidar la cabecera
-/// `Content-Type` daría un error que contradice el contrato de "errores siempre en JSON",
-/// y encima uno desorientador (404 en una ruta que existe). En cuanto haya `#[catch]`
-/// propios que devuelvan JSON, añadir `format = "json"` pasa a ser gratis y correcto.
-/// Es una decisión con fecha, no un olvido.
-#[post("/customers", data = "<payload>")]
+/// 🇪🇸 NOTA (`format = "json"`, que antes NO estaba): este atributo exige que la petición
+/// llegue con `Content-Type: application/json`; si no, la ruta no se selecciona siquiera.
+/// No se puso en su momento a propósito: sin catchers, olvidar esa cabecera terminaba en
+/// un 404 con la página HTML de Rocket — un error que contradecía el contrato de "errores
+/// siempre en JSON" y encima desorientaba (un 404 en una ruta que existe). Ahora que
+/// `catch_not_found` responde en JSON y explica que el `Content-Type` es uno de los
+/// criterios de enrutado, el filtro sale gratis: rechaza cuerpos que no dicen ser JSON
+/// antes de intentar parsearlos, y el fallo se explica solo.
+#[post("/customers", format = "json", data = "<payload>")]
 fn create_customer(
     db: &State<Db>,
     payload: Json<NewCustomer>,
@@ -804,4 +974,20 @@ fn rocket() -> _ {
             }
         }))
         .mount("/", routes![health, list_customers, create_customer])
+        // 🇪🇸 NOTA (`.register()` y no `.mount()`): las rutas se MONTAN, los catchers se
+        // REGISTRAN. Son dos tablas distintas dentro de Rocket, y el primer argumento
+        // significa cosas distintas en cada una: en `mount` es el prefijo del path; en
+        // `register` es el ámbito en el que ese catcher aplica. Con `"/"` cubrimos toda la
+        // aplicación; si mañana hubiera un `/api` con otro formato de error, se le podría
+        // registrar el suyo y ganaría por ser más específico.
+        .register(
+            "/",
+            catchers![
+                catch_bad_request,
+                catch_unprocessable,
+                catch_not_found,
+                catch_internal,
+                catch_default
+            ],
+        )
 }
