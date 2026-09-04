@@ -1,0 +1,53 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * 🇪🇸 NOTA (paleta de panel administrativo): grises neutros y UN solo acento, el
+ * azul, reservado para información. Nada de gradientes ni de color decorativo.
+ *
+ * La razón no es estética: en una herramienta que alguien usa ocho horas, el color
+ * es un CANAL DE SEÑAL, y gastarlo en decoración lo inutiliza. Si los textos
+ * normales fueran azules, el azul del aviso de "tiene pedidos" no diría nada. Aquí
+ * el color solo aparece cuando hay algo que comunicar: rojo = error, azul = regla
+ * de negocio. Todo lo demás es gris.
+ */
+@theme {
+  --color-background: #ffffff;
+  --color-foreground: #18181b;
+
+  --color-card: #ffffff;
+  --color-muted: #f4f4f5;
+  --color-muted-foreground: #71717a;
+
+  --color-border: #e4e4e7;
+  --color-input: #d4d4d8;
+  --color-ring: #a1a1aa;
+
+  --color-primary: #18181b;
+  --color-primary-foreground: #fafafa;
+
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #fafafa;
+
+  /* Azul informativo: reglas de negocio, no fallos. */
+  --color-info: #1d4ed8;
+  --color-info-foreground: #1e3a8a;
+  --color-info-muted: #eff6ff;
+  --color-info-border: #bfdbfe;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Las cifras de la tabla y del paginador, alineadas en columnas. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
