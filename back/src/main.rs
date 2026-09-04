@@ -23,6 +23,9 @@ extern crate rocket;
 // de estar ahí, a diferencia de lo que hacen Node o Python. Sí el árbol de módulos que
 // tú declaras explícitamente, empezando por la raíz (`main.rs`).
 
+// 🇪🇸 NOTA: `cors` va aquí arriba con los demás por el mismo motivo que `db`: sin esta
+// línea, `src/cors.rs` no forma parte de la compilación por mucho que exista el archivo.
+mod cors;
 mod db;
 
 // 🇪🇸 NOTA (aquí hubo un `#[allow(dead_code)]`, y ya no queda ninguno en el proyecto):
@@ -1258,7 +1261,12 @@ fn rocket() -> _ {
                 get_customer,
                 create_customer,
                 update_customer,
-                delete_customer
+                delete_customer,
+                // 🇪🇸 NOTA: la ruta del preflight vive en `cors.rs`, junto al fairing que le
+                // pone las cabeceras. Las dos piezas son inseparables —una ruta OPTIONS sin
+                // el fairing devuelve un 204 vacío que el navegador rechaza igual— y
+                // tenerlas en el mismo archivo evita que alguien borre una sin la otra.
+                cors::preflight
             ],
         )
         // 🇪🇸 NOTA (`.register()` y no `.mount()`): las rutas se MONTAN, los catchers se
@@ -1267,6 +1275,10 @@ fn rocket() -> _ {
         // `register` es el ámbito en el que ese catcher aplica. Con `"/"` cubrimos toda la
         // aplicación; si mañana hubiera un `/api` con otro formato de error, se le podría
         // registrar el suyo y ganaría por ser más específico.
+        // 🇪🇸 NOTA (el orden de los `.attach()` no importa aquí): Rocket ejecuta los
+        // `on_response` en el orden en que se adjuntaron, pero este fairing y el de la base
+        // de datos no se pisan — uno corre al arrancar y el otro al responder.
+        .attach(cors::Cors::from_env())
         .register(
             "/",
             catchers![
