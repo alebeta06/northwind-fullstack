@@ -1,0 +1,14 @@
+# El artefacto de compilación local: varios GB de dependencias ya compiladas para
+# ESTA máquina, inútiles dentro de la imagen (la compilación pasa en el stage 1,
+# contra la libc de Debian) y que además se enviarían enteros al daemon de Docker
+# como contexto de build antes de empezar. Sin esta línea, el build tarda minutos
+# solo en subir el contexto.
+target/
+
+# Estado de herramientas locales, nada que ver con el binario.
+.claude-flow/
+
+# Se leen desde fuera del contexto, no hacen falta dentro.
+Dockerfile
+.dockerignore
+fly.toml
