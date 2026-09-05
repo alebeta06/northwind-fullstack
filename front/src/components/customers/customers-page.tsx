@@ -84,10 +84,20 @@ export function CustomersPage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:py-10">
-      <header className="mb-6">
-        <h1 className="text-lg font-semibold tracking-tight">Clientes</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Northwind · gestión de la tabla Customers
+      {/* 🇪🇸 NOTA: la cabecera se centra, pero SOLO la cabecera. La barra de
+          herramientas y la tabla siguen alineadas a los bordes porque son controles
+          que se usan, no presentación que se lee: el ojo vuelve siempre al mismo
+          sitio a buscar el buscador. `max-w-2xl` evita que el subtítulo se estire
+          hasta los 1152 px del contenedor, donde la línea sería tan larga que
+          costaría encontrar el principio de la siguiente. */}
+      <header className="mb-8 text-center">
+        <h1 className="text-xl font-semibold tracking-tight">
+          Northwind · Customer Management
+        </h1>
+        <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground">
+          Aplicación full-stack de gestión de clientes sobre la base de datos
+          Northwind: API REST en Rust con Rocket y panel administrativo en
+          Next.js.
         </p>
       </header>
 
