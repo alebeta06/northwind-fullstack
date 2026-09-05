@@ -1,56 +1,23 @@
-# Configuración de despliegue en Fly.io — API Northwind (Rust · Rocket)
+# fly.toml app configuration file generated for northwind-api on 2026-09-04T19:07:06-05:00
 #
-# 🇪🇸 NOTA: los nombres de aplicación en Fly son ÚNICOS A NIVEL GLOBAL, no por
-# cuenta. Si "northwind-api" ya está cogido, `fly launch` o `fly deploy` fallará con
-# un error de nombre no disponible; se cambia esta línea (p. ej. northwind-api-ab) y
-# no hay que tocar nada más.
-app = "northwind-api"
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-# Madrid. La latencia importa poco para una demo, pero la región marca dónde vive el
-# disco de la máquina, y tenerla cerca hace que los despliegues y los logs respondan.
-primary_region = "mad"
+app = 'northwind-api'
+primary_region = 'cdg'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [http_service]
-  # Tiene que coincidir con el puerto en el que escucha Rocket (la constante PORT de
-  # main.rs y el ENV ROCKET_PORT del Dockerfile). Si no coinciden, el proxy de Fly
-  # manda el tráfico a un puerto donde no hay nadie y los health checks fallan sin
-  # que el proceso se entere de nada.
   internal_port = 8001
-
-  # Fly termina el TLS en su proxy y habla HTTP plano con el contenedor, así que
-  # Rocket no necesita saber nada de certificados. Esto redirige el tráfico http://
-  # a https:// en el borde.
   force_https = true
-
-  # ── Free tier: que no cueste dinero estar parado ──────────────────
-  #
-  # 🇪🇸 NOTA: con esto la máquina se apaga sola cuando deja de recibir peticiones y
-  # se enciende con la siguiente. El precio es una latencia de arranque en frío de
-  # uno o dos segundos en la primera petición después de un rato inactiva — un
-  # binario de Rust con SQLite embebido arranca rápido, pero no instantáneamente.
-  #
-  # `min_machines_running = 0` es la pieza que de verdad permite bajar a cero; sin
-  # ella Fly mantendría siempre una máquina viva.
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  # 🇪🇸 NOTA: la base de datos son 24 MB en disco, pero SQLite no la carga entera en
-  # memoria: lee las páginas que necesita. Rocket sobre Tokio con este tráfico vive
-  # de sobra en 256 MB. Si aparecieran OOM en `fly logs`, esto es lo primero que hay
-  # que subir.
-  memory = "256mb"
-  cpu_kind = "shared"
+  memory = '256mb'
+  cpu_kind = 'shared'
   cpus = 1
-
-# 🇪🇸 CORS_ALLOWED_ORIGIN no se declara aquí a propósito, ni siquiera como [env].
-# Lo que se escriba en este archivo va al repositorio y se cambia solo redesplegando;
-# como secreto se cambia en caliente:
-#
-#   fly secrets set CORS_ALLOWED_ORIGIN=https://mi-app.vercel.app
-#
-# Mientras no exista, cors.rs usa http://localhost:3000.
+  memory_mb = 256
