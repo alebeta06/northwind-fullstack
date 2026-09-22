@@ -62,8 +62,21 @@ use models::{Customer, NewCustomer, Paginated, UpdateCustomer};
 //  Constantes de configuración
 // ═══════════════════════════════════════════════════════════════════
 
-/// Port mandated by ENUNCIADO.md. The Next.js frontend will point here.
-const PORT: u16 = 8001;
+/// Port mandated by ENUNCIADO.md, used when the environment says nothing.
+///
+/// 🇪🇸 NOTA: es el DEFAULT, no el puerto. El puerto efectivo lo decide `resolve_port`
+/// leyendo `PORT`. Este valor es el que hace que `cargo run` siga funcionando sin exportar
+/// nada y el que el frontend espera en desarrollo.
+const DEFAULT_PORT: u16 = 8001;
+
+/// Name of the environment variable that carries the port to listen on.
+///
+/// 🇪🇸 NOTA (por qué `PORT` y no `ROCKET_PORT`): las plataformas de despliegue —Render,
+/// Heroku, Cloud Run— no saben qué framework hay dentro del contenedor. Asignan un puerto
+/// arbitrario y lo comunican por la variable `PORT`, que es la convención común. Un
+/// servicio que ignore `PORT` y escuche en un puerto fijo no recibe tráfico: la plataforma
+/// enruta hacia el puerto que ella eligió, y ahí no hay nadie escuchando.
+const PORT_ENV: &str = "PORT";
 
 /// Path to the Northwind database file.
 ///
@@ -1178,6 +1191,43 @@ fn delete_customer(db: &State<Db>, id: &str) -> Result<NoContent, ApiError> {
 //  Arranque
 // ═══════════════════════════════════════════════════════════════════
 
+/// Decides the port to listen on from the raw value of `PORT`.
+///
+/// An absent, empty or unparseable value falls back to [`DEFAULT_PORT`].
+///
+/// 🇪🇸 NOTA (por qué recibe un `Option<String>` en vez de leer el entorno): así la decisión
+/// es una función pura y se puede probar. Un test que hiciera `env::set_var("PORT", …)`
+/// tocaría el entorno del PROCESO, que es compartido por todos los tests del binario y que
+/// Cargo ejecuta en paralelo por defecto: dos tests de puerto se pisarían entre ellos de
+/// forma intermitente. Leer el entorno es una línea, y vive en el llamante.
+///
+/// 🇪🇸 DECISIÓN (por qué un valor inválido NO aborta el arranque): la alternativa es morir
+/// con un error de configuración, que es defendible. Se elige el fallback porque el coste
+/// de los dos fallos no es simétrico: con un `PORT` corrupto, abortar deja el servicio
+/// entero caído, mientras que el fallback deja un servidor vivo y diagnosticable. Y no es
+/// un fallo silencioso — el aviso va a stderr, que es donde la plataforma recoge los logs.
+fn resolve_port(raw: Option<String>) -> u16 {
+    let Some(value) = raw else {
+        return DEFAULT_PORT;
+    };
+
+    // 🇪🇸 NOTA (el `trim`): un puerto inyectado por una plataforma puede llegar con un
+    // salto de línea pegado si se definió desde un archivo o un `echo`. `"8001\n"` no
+    // parsea, y fallar por un byte invisible es de los diagnósticos más caros que hay.
+    match value.trim().parse::<u16>() {
+        // 🇪🇸 NOTA: el 0 se rechaza a propósito. `parse::<u16>()` lo acepta, pero para el
+        // sistema operativo significa "asígname cualquier puerto libre": el servidor
+        // arrancaría en un puerto impredecible que nadie sabría consultar.
+        Ok(port) if port != 0 => port,
+        _ => {
+            eprintln!(
+                "[config] {PORT_ENV}={value:?} is not a valid port; falling back to {DEFAULT_PORT}"
+            );
+            DEFAULT_PORT
+        }
+    }
+}
+
 /// Builds and configures the Rocket instance.
 ///
 /// 🇪🇸 NOTA (`rocket::custom` vs `rocket::build`): `rocket::build()` usa la configuración
@@ -1187,16 +1237,23 @@ fn delete_customer(db: &State<Db>, id: &str) -> Result<NoContent, ApiError> {
 ///
 /// Usamos `.merge()` sobre `Config::figment()` en lugar de construir un `Config` a mano
 /// porque `merge` conserva la cadena de proveedores de Rocket: `Rocket.toml` y las
-/// variables `ROCKET_*` siguen funcionando, y `ROCKET_PORT` puede sobreescribir esto en
-/// despliegue sin recompilar. Un `Config { port: 8001, ..Default::default() }` mataría
-/// esa capacidad.
+/// variables `ROCKET_*` siguen funcionando para todo lo demás. Un
+/// `Config { port: 8001, ..Default::default() }` mataría esa capacidad.
+///
+/// ⚠️ PERO el puerto es la excepción, y conviene decirlo aquí porque el comentario que
+/// ocupaba este hueco afirmaba lo contrario: en Figment, lo que entra por `merge` tiene MÁS
+/// precedencia que las variables de entorno, así que `ROCKET_PORT` NO puede mover el puerto
+/// por sí solo — este `merge` lo pisa siempre. Por eso el valor que se fusiona no es una
+/// constante sino `resolve_port()`: la única vía para cambiar el puerto sin recompilar es
+/// `PORT`, y pasa por leerla explícitamente ANTES del merge.
 ///
 /// 🇪🇸 NOTA (`#[launch]`): esta macro genera el `fn main()` y arranca el runtime async de
 /// Tokio. En Rocket 0.4 se escribía `fn main() { rocket::ignite()...launch(); }`; en 0.5
 /// `ignite()` ya no existe y el arranque es asíncrono.
 #[launch]
 fn rocket() -> _ {
-    let figment = rocket::Config::figment().merge(("port", PORT));
+    let figment =
+        rocket::Config::figment().merge(("port", resolve_port(std::env::var(PORT_ENV).ok())));
 
     rocket::custom(figment)
         // 🇪🇸 NOTA (POR QUÉ UN FAIRING Y NO `db::open(DB_PATH).unwrap()`):

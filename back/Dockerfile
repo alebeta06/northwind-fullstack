@@ -124,13 +124,16 @@ ADD --checksum=sha256:2f4f5c68dfcd33ba27373eae48c7a4869800c68095ee0f9f0da494f833
 # que el port forwarding de Docker y el proxy de Fly puedan entrar.
 ENV ROCKET_ADDRESS=0.0.0.0
 
-# 🇪🇸 NOTA (este ENV es coherencia, no el mecanismo): el puerto real lo fija main.rs
-# con `Config::figment().merge(("port", PORT))`, y en Figment un `merge` tiene MÁS
-# precedencia que las variables de entorno — o sea que ROCKET_PORT no puede mover el
-# puerto por sí solo. Se declara igualmente porque documenta el puerto en el que
-# escucha la imagen y porque tiene que coincidir con `internal_port` de fly.toml.
-# Para cambiar el puerto de verdad hay que tocar la constante PORT de main.rs.
-ENV ROCKET_PORT=8001
+# 🇪🇸 NOTA (por qué PORT y NO ROCKET_PORT): main.rs lee `PORT` y lo fusiona en el
+# figment, y en Figment un `merge` tiene MÁS precedencia que las variables de entorno
+# — así que `ROCKET_PORT` NO movería el puerto: el merge lo pisaría. `PORT` es la única
+# variable que decide el puerto, y además es la convención que usan las plataformas de
+# despliegue para comunicar el puerto que han asignado.
+#
+# Este valor es solo el DEFAULT de la imagen, y coincide con el que main.rs trae por su
+# cuenta: sirve para documentar en qué puerto escucha si nadie dice nada. Una plataforma
+# que inyecte su propio `PORT` lo sobreescribe sin reconstruir la imagen.
+ENV PORT=8001
 
 # 🇪🇸 CORS_ALLOWED_ORIGIN se deja DELIBERADAMENTE sin definir aquí.
 #

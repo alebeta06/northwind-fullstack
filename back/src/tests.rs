@@ -298,3 +298,39 @@ fn responses_carry_the_cors_header() {
 
     assert!(!origin.is_empty(), "the allowed origin must not be empty");
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  Resolución del puerto
+// ═══════════════════════════════════════════════════════════════════
+//
+// 🇪🇸 NOTA: estos son los únicos tests del archivo que no pasan por HTTP. Prueban
+// `resolve_port` como función pura, lo que permite cubrir los casos raros —basura, un byte
+// invisible, el 0— sin arrancar un servidor ni tocar el entorno del proceso.
+
+#[test]
+fn port_falls_back_when_the_variable_is_absent() {
+    assert_eq!(super::resolve_port(None), 8001);
+}
+
+#[test]
+fn port_comes_from_the_variable_when_valid() {
+    assert_eq!(super::resolve_port(Some("10000".to_string())), 10000);
+}
+
+#[test]
+fn port_tolerates_surrounding_whitespace() {
+    assert_eq!(super::resolve_port(Some(" 10000\n".to_string())), 10000);
+}
+
+#[test]
+fn port_falls_back_on_unusable_values() {
+    // 🇪🇸 Vacío, no numérico, fuera del rango de un u16 y el 0 (que el SO lee como
+    // "cualquier puerto libre", no como un puerto).
+    for raw in ["", "render", "70000", "0"] {
+        assert_eq!(
+            super::resolve_port(Some(raw.to_string())),
+            8001,
+            "{raw:?} must fall back to the default port"
+        );
+    }
+}
