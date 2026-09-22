@@ -25,7 +25,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 export function CustomersPage() {
   const { params, setParams, toggleSort } = useListParams();
-  const { page, loading, error, reload } = useCustomers(params);
+  const { page, loading, error, waking, reload } = useCustomers(params);
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -119,6 +119,21 @@ export function CustomersPage() {
           Nuevo cliente
         </Button>
       </div>
+
+      {/* ── Arranque en frío del backend ─────────────────────────────── */}
+      {/* 🇪🇸 NOTA (por qué `info` y no `error`): aquí NO ha fallado nada. El hook
+          sigue reintentando y la lista va a aparecer sola; lo único que pasa es que
+          la espera es lo bastante larga como para merecer una explicación. En rojo,
+          el usuario leería "está roto" y se pondría a pulsar botones justo cuando lo
+          único que hay que hacer es esperar. El `role="status"` de la variante `info`
+          además lo anuncia sin interrumpir a un lector de pantalla. */}
+      {waking && !error ? (
+        <div className="mb-3">
+          <Notice variant="info" title="El servidor gratuito se está despertando">
+            Puede tardar hasta un minuto.
+          </Notice>
+        </div>
+      ) : null}
 
       {/* ── Tabla, o el fallo de red ─────────────────────────────────── */}
       <div className="rounded-lg border border-border bg-card">
