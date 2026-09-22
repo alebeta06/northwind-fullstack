@@ -12,3 +12,8 @@ target/
 Dockerfile
 .dockerignore
 fly.toml
+
+# La base de datos NO se copia del contexto: se descarga en el build con su sha256
+# fijado (ver Dockerfile). El archivo local, además de pesar 24 MB de contexto,
+# tiene otro hash porque ya recibió escrituras.
+northwind.db

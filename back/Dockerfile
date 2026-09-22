@@ -81,7 +81,28 @@ COPY --from=builder /build/target/release/back /usr/local/bin/back
 #
 # La ruta importa: main.rs abre "northwind.db" RELATIVO al directorio de trabajo,
 # así que el archivo tiene que estar en el WORKDIR y no en cualquier otro sitio.
-COPY northwind.db ./northwind.db
+#
+# ── Por qué se DESCARGA y no se copia del contexto ──────────────────
+#
+# 🇪🇸 `northwind.db` está en .gitignore: no viaja en el repositorio. Un `COPY
+# northwind.db` obliga a que el archivo exista en el disco de quien construye, lo
+# que rompe cualquier build hecho a partir de un clon limpio — que es exactamente
+# lo que hace una plataforma que construye desde GitHub. Descargándolo aquí, la
+# imagen se puede construir desde el repo y nada más.
+#
+# ⚠️ El `--checksum` NO es opcional: sin él esto sería "ejecuta en producción el
+# archivo que hoy haya en una rama de un tercero". Con el sha256 fijado, si el
+# archivo remoto cambia —actualización del upstream, rama movida, respuesta
+# manipulada— el build FALLA en esta línea en vez de desplegar una base distinta a
+# la que se probó. Cambiar de versión de la base es entonces un cambio explícito de
+# esta línea, revisable en el diff.
+#
+# El hash se calculó sobre una descarga fresca de esta URL, NO sobre el
+# northwind.db local: ese ya recibió escrituras de las pruebas de CRUD y tiene otro
+# sha256 (una base SQLite cambia de bytes en cuanto se escribe en ella).
+ADD --checksum=sha256:2f4f5c68dfcd33ba27373eae48c7a4869800c68095ee0f9f0da494f83382a877 \
+    https://github.com/jpwhite3/northwind-SQLite3/raw/main/dist/northwind.db \
+    ./northwind.db
 
 # ═══════════════════════════════════════════════════════════════════
 #  Variables de entorno
