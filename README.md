@@ -15,11 +15,13 @@ Aplicación full-stack de gestión de clientes sobre la base de datos Northwind:
 | | |
 | --- | --- |
 | **Aplicación** | **https://northwind-fullstack.vercel.app/** |
-| **API** | **https://northwind-api.fly.dev/health** |
+| **API** | **https://northwind-api-hkvs.onrender.com/health** |
 
-> La API corre con `auto_stop_machines`, así que la máquina se apaga cuando nadie la usa.
-> La primera petición después de un rato inactiva tarda unos segundos en responder; las
-> siguientes son inmediatas.
+> **La primera carga puede tardar hasta un minuto.** La API está en el plan gratuito de
+> Render, que suspende la instancia tras 15 minutos sin tráfico y tiene que arrancarla de
+> nuevo con la siguiente petición. El panel lo da por hecho: reintenta hasta 90 segundos
+> con backoff y, si a los 3 segundos aún no hay datos, muestra un aviso explicando que el
+> servidor está despertando. Después de la primera respuesta, todo va inmediato.
 
 <!-- TODO(vídeo): pegar aquí el botón a la demo en YouTube cuando esté grabada.
      Plantilla lista para rellenar — solo hay que sustituir VIDEO_ID:
@@ -57,7 +59,7 @@ Aplicación full-stack de gestión de clientes sobre la base de datos Northwind:
 | | Tailwind CSS | 4 | |
 | | shadcn/ui sobre Radix | dialog 1.1 · select 2.3 | Componentes copiados al proyecto, no una dependencia |
 | **Gestor de paquetes** | pnpm | 11 | |
-| **Despliegue** | Fly.io + Vercel | | Ver [Despliegue](#despliegue) |
+| **Despliegue** | Render + Vercel | | Ver [Despliegue](#despliegue) |
 
 ---
 
@@ -127,7 +129,7 @@ decisiones— está en [`front/README.md`](front/README.md).**
 ## La API
 
 Seis endpoints. Todos los ejemplos de abajo se ejecutaron contra
-`https://northwind-api.fly.dev` y las respuestas son las reales; el JSON de las más
+`https://northwind-api-hkvs.onrender.com` y las respuestas son las reales; el JSON de las más
 largas está formateado para poder leerlo.
 
 **Todos los errores comparten la misma forma**, vengan del handler o de un catcher:
@@ -141,7 +143,7 @@ Un solo formato significa que el frontend escribe **una** función para manejar 
 ### `GET /health`
 
 ```bash
-curl https://northwind-api.fly.dev/health
+curl https://northwind-api-hkvs.onrender.com/health
 ```
 ```json
 {"customers":93,"sqlite":"3.53.2","status":"ok"}
@@ -153,7 +155,7 @@ una consulta real—, así que es lo primero que conviene mirar cuando algo fall
 ### `GET /customers` — listado paginado, filtrado y ordenado
 
 ```bash
-curl 'https://northwind-api.fly.dev/customers?page=1&pageSize=2&sortBy=customerId&sortDir=asc'
+curl 'https://northwind-api-hkvs.onrender.com/customers?page=1&pageSize=2&sortBy=customerId&sortDir=asc'
 ```
 ```json
 {
@@ -184,7 +186,7 @@ curl 'https://northwind-api.fly.dev/customers?page=1&pageSize=2&sortBy=customerI
 El filtro es parcial y no distingue mayúsculas, así que busca dentro del nombre:
 
 ```bash
-curl 'https://northwind-api.fly.dev/customers?companyName=ana&pageSize=3'
+curl 'https://northwind-api-hkvs.onrender.com/customers?companyName=ana&pageSize=3'
 ```
 ```
 total: 2  →  ANATR (Ana Trujillo Emparedados y helados)  ·  HANAR (Hanari Carnes)
@@ -197,7 +199,7 @@ error**: cae en el orden por defecto en silencio, algo que se explica en
 ### `GET /customers/<id>`
 
 ```bash
-curl https://northwind-api.fly.dev/customers/ALFKI
+curl https://northwind-api-hkvs.onrender.com/customers/ALFKI
 ```
 ```json
 {"customerId":"ALFKI","companyName":"Alfreds Futterkiste","contactName":"Maria Anders",
@@ -210,10 +212,10 @@ El identificador se normaliza a mayúsculas, así que `/customers/alfki` es el m
 recurso. Los dos caminos de error:
 
 ```bash
-curl -i https://northwind-api.fly.dev/customers/ZZZZZ     # HTTP 404
+curl -i https://northwind-api-hkvs.onrender.com/customers/ZZZZZ     # HTTP 404
 {"error":"not_found","message":"no customer with id 'ZZZZZ'"}
 
-curl -i https://northwind-api.fly.dev/customers/AB        # HTTP 400
+curl -i https://northwind-api-hkvs.onrender.com/customers/AB        # HTTP 400
 {"error":"invalid_customer_id",
  "message":"customerId must be exactly 5 alphanumeric ASCII characters (e.g. \"ALFKI\")"}
 ```
@@ -223,7 +225,7 @@ curl -i https://northwind-api.fly.dev/customers/AB        # HTTP 400
 Los once campos. `customerId` y `companyName` son obligatorios; el resto acepta `null`.
 
 ```bash
-curl -i -X POST https://northwind-api.fly.dev/customers \
+curl -i -X POST https://northwind-api-hkvs.onrender.com/customers \
   -H 'Content-Type: application/json' \
   -d '{"customerId":"TEST1","companyName":"Pruebas SL","contactName":"Ada Lovelace",
        "contactTitle":"CTO","address":"Calle Mayor 1","city":"Madrid","region":null,
@@ -257,7 +259,7 @@ se selecciona y la respuesta es un 404 desconcertante.
 > campos, sin error y sin que nadie se entere hasta que falte un teléfono.
 
 ```bash
-curl -X PUT https://northwind-api.fly.dev/customers/TEST1 \
+curl -X PUT https://northwind-api-hkvs.onrender.com/customers/TEST1 \
   -H 'Content-Type: application/json' \
   -d '{"companyName":"Pruebas SL","contactName":"Ada Lovelace","contactTitle":"CTO",
        "address":"Calle Mayor 1","city":"Barcelona","region":null,"postalCode":"28013",
@@ -275,7 +277,7 @@ El `customerId` va en la URL, no en el cuerpo: no se puede cambiar.
 ### `DELETE /customers/<id>`
 
 ```bash
-curl -i -X DELETE https://northwind-api.fly.dev/customers/TEST1
+curl -i -X DELETE https://northwind-api-hkvs.onrender.com/customers/TEST1
 ```
 ```
 HTTP/1.1 204 No Content
@@ -284,7 +286,7 @@ HTTP/1.1 204 No Content
 Y el caso que en esta base de datos es el **normal**:
 
 ```bash
-curl -i -X DELETE https://northwind-api.fly.dev/customers/ALFKI
+curl -i -X DELETE https://northwind-api-hkvs.onrender.com/customers/ALFKI
 ```
 ```
 HTTP/1.1 409 Conflict
@@ -573,13 +575,40 @@ en la suite automática.** Es la brecha más grande de este repositorio.
 
 ## Despliegue
 
-### Backend en Fly.io
+### Backend en Render
+
+Un servicio Docker construido desde GitHub. La configuración entera son seis campos:
+
+| Campo | Valor |
+| --- | --- |
+| Región | Virginia |
+| Plan | Free |
+| Runtime | Docker |
+| Build Context | `back` |
+| Dockerfile Path | `back/Dockerfile` |
+| Health Check Path | `/health` |
+
+El contexto es `back` y no la raíz porque el `Dockerfile` copia `Cargo.toml`, `Cargo.lock`
+y `src/` con rutas relativas al backend; con la raíz como contexto el build subiría también
+`front/` y no encontraría nada donde lo busca.
+
+*(El primer destino fue Fly.io. Se descartó cuando su trial —7 días o 2 horas de máquina—
+expiró: detrás no hay plan gratuito.)*
+
+**Por qué no Vercel también para el backend.** Vercel ejecuta funciones serverless: el
+filesystem es de solo lectura salvo `/tmp`, y además efímero entre invocaciones. SQLite no
+es un servidor al que conectarse, **es un archivo que el proceso abre y escribe**, así que
+un backend con SQLite embebido necesita un proceso de larga vida con disco propio. Render
+da justo eso —un contenedor que corre— y por eso el reparto es Vercel para el frontend y
+Render para la API.
+
+#### La imagen
 
 `back/Dockerfile` es multi-stage: compila con la imagen oficial de Rust y despacha sobre
 `debian:bookworm-slim`. **Imagen final: 158 MB** — 85 MB de base Debian, 25 MB de base de
 datos y 6 MB de binario ya pasado por `strip`.
 
-Tres detalles que hacen que funcione:
+Cuatro detalles que hacen que funcione:
 
 - **La caché de capas está montada al revés a propósito.** Se copian primero `Cargo.toml`
   y `Cargo.lock` y se compilan las dependencias con un `main.rs` falso; solo después
@@ -591,40 +620,70 @@ Tres detalles que hacen que funcione:
   enlaza estáticamente dentro del binario. Verificado con `ldd`: el binario solo pide
   `libgcc_s`, `libm`, `libc` y el cargador.
 
+- **`northwind.db` se descarga durante el build, con el sha256 fijado.** El archivo pesa
+  24 MB y está en `.gitignore`, así que un `COPY` exigiría tenerlo en el disco de quien
+  construye — y quien construye aquí es una plataforma que parte de un clon limpio del
+  repositorio. Descargándolo en el `Dockerfile` la imagen se construye desde el repo y
+  nada más. El `--checksum` no es decorativo: sin él, el despliegue ejecutaría el archivo
+  que hoy haya en una rama de un tercero; con el hash fijado, si el archivo remoto cambia
+  el build **falla en esa línea** en lugar de servir una base distinta a la probada, y
+  actualizar la base pasa a ser un cambio explícito y revisable en el diff.
+
 - **`ROCKET_ADDRESS=0.0.0.0` es la línea que hace el contenedor alcanzable.** Rocket
   escucha en `127.0.0.1` por defecto, que dentro de un contenedor es el loopback *del
   contenedor*: el servidor arranca, anuncia tan tranquilo que se lanzó, responde a un
   curl hecho desde dentro y **rechaza toda conexión que venga de fuera**. Lo cruel del
   síntoma es que **no hay ningún error en los logs** —desde el punto de vista de Rocket
-  todo va bien—; desde fuera solo se ve `connection refused`, y en Fly, health checks que
-  fallan sin explicación. `0.0.0.0` significa "escucha en todas las interfaces", que es
-  lo que necesitan el reenvío de puertos de Docker y el proxy de Fly.
+  todo va bien—; desde fuera solo se ve `connection refused`, y en la plataforma, health
+  checks que fallan sin explicación. `0.0.0.0` significa "escucha en todas las
+  interfaces", que es lo que necesitan el reenvío de puertos de Docker y el proxy de
+  Render.
 
-La base de datos **viaja dentro de la imagen**, sin volumen persistente. Es una decisión
-consciente para una demo: lo que se escriba se pierde en el siguiente despliegue, y eso
-es una ventaja —cualquiera puede crear, editar y borrar sin miedo, y un redespliegue
-devuelve la base a sus 93 clientes sin ningún paso manual—. Si esto tuviera que guardar
-datos de verdad, sería el error más grave del archivo.
+#### El puerto se lee de `PORT`
 
-```bash
-cd back
-fly deploy
-fly secrets set CORS_ALLOWED_ORIGIN=https://northwind-fullstack.vercel.app
-```
+Render no sabe qué framework hay dentro del contenedor: asigna un puerto y lo comunica por
+la variable `PORT`, la convención común. Un servicio que la ignore y escuche en un puerto
+fijo no recibe tráfico, porque la plataforma enruta hacia el puerto que eligió ella.
 
-`CORS_ALLOWED_ORIGIN` se deja **fuera** de la imagen y de `fly.toml` a propósito: como
-secreto se cambia en caliente, mientras que dentro de la imagen cambiar el origen
-permitido obligaría a reconstruir y redesplegar para cambiar una cadena de texto.
+Lo que obliga a leerla **explícitamente** es Figment, la capa de configuración de Rocket:
+`main.rs` fija el puerto con `Config::figment().merge(("port", …))`, y en Figment un
+`merge` tiene más precedencia que las variables de entorno. Es decir, `ROCKET_PORT` —la
+vía normal de Rocket— **no movería nada**: el merge la pisaría. Por eso `main.rs` lee
+`PORT` del entorno *antes* del merge y lo mete ahí, cayendo en 8001 si nadie dice nada.
+Así `cargo run` sigue funcionando sin exportar ninguna variable y Render puede inyectar
+el suyo sin reconstruir la imagen.
 
-`fly.toml` usa la región `mad`, `force_https`, y `auto_stop_machines` con
-`min_machines_running = 0`, de modo que la aplicación no consume nada mientras nadie la
-usa. El precio es el arranque en frío de la primera petición.
+#### `CORS_ALLOWED_ORIGIN`
+
+Se deja **fuera** de la imagen a propósito y se define en Render como variable de entorno
+del servicio, con el valor `https://northwind-fullstack.vercel.app`. Con un valor por
+defecto dentro de la imagen, cambiar el origen permitido —al mover el frontend de dominio—
+obligaría a reconstruir y redesplegar la imagen entera para cambiar una cadena de texto.
+Sin definirla, `cors.rs` cae en `http://localhost:3000`, que es justo lo que hace falta en
+desarrollo.
+
+#### Filesystem efímero y arranque en frío
+
+Las dos consecuencias del plan Free, las dos asumidas:
+
+- **La base de datos viaja dentro de la imagen, sin volumen persistente.** Lo que se
+  escriba se pierde en el siguiente reinicio o redespliegue, y para una demo eso es una
+  ventaja: cualquiera puede crear, editar y borrar sin miedo, y la base vuelve sola a sus
+  93 clientes sin ningún paso manual de limpieza. Si esto tuviera que guardar datos de
+  verdad, sería el error más grave del proyecto.
+
+- **La instancia se suspende tras 15 minutos sin tráfico** y tarda alrededor de un minuto
+  en volver. El frontend lo trata como lo que es —una espera, no un error—: reintenta con
+  backoff exponencial hasta 90 segundos y, si a los 3 segundos no hay datos, muestra un
+  aviso de que el servidor está despertando. Solo reintenta antes de la primera respuesta;
+  a partir de ahí un fallo ya es un fallo de verdad y se muestra como tal. Verificado de
+  extremo a extremo contra el despliegue real.
 
 ### Frontend en Vercel
 
 Se despliega el directorio `front/` con la configuración por defecto de Next.js. La única
-variable es `NEXT_PUBLIC_API_URL`, apuntando a `https://northwind-api.fly.dev`. El prefijo
-`NEXT_PUBLIC_` es obligatorio: las peticiones salen del navegador, no del servidor de
+variable es `NEXT_PUBLIC_API_URL`, apuntando a `https://northwind-api-hkvs.onrender.com`.
+El prefijo `NEXT_PUBLIC_` es obligatorio: las peticiones salen del navegador, no del servidor de
 Next, así que la variable tiene que viajar en el bundle.
 
 ---
@@ -639,7 +698,7 @@ Ordenando por ciudad de forma descendente, el primer resultado es **Århus**, po
 de Warszawa:
 
 ```bash
-curl 'https://northwind-api.fly.dev/customers?sortBy=city&sortDir=desc&pageSize=6'
+curl 'https://northwind-api-hkvs.onrender.com/customers?sortBy=city&sortDir=desc&pageSize=6'
 # Århus · Warszawa · Walla Walla · Versailles · Vancouver · Tsawassen
 ```
 
@@ -655,21 +714,29 @@ Todas las consultas pasan por la misma conexión protegida por un `Mutex`, así 
 atienden de una en una. Con 93 filas y una demo es imperceptible; bajo carga real sería el
 primer cuello de botella. La salida es un pool de conexiones (`r2d2_sqlite`).
 
-### `ROCKET_PORT` no cambia el puerto
+### `ROCKET_PORT` no cambia el puerto: la variable es `PORT`
 
-La variable está declarada en el `Dockerfile` por coherencia con `internal_port` de
-`fly.toml`, pero **no mueve el puerto**: `main.rs` lo fija con
-`Config::figment().merge(("port", PORT))`, y en Figment un `merge` tiene más precedencia
-que las variables de entorno. Comprobado lanzando la imagen con `ROCKET_PORT=9999`: Rocket
-siguió arrancando en el 8001. Para cambiar el puerto de verdad hay que tocar la constante
-`PORT` del código. `ROCKET_ADDRESS` sí funciona por entorno, que es lo que importaba.
+`main.rs` fija el puerto con `Config::figment().merge(("port", …))`, y en Figment un
+`merge` tiene más precedencia que las variables de entorno, así que la vía normal de
+Rocket no funciona. Comprobado lanzando la imagen con `ROCKET_PORT=9999`: siguió
+arrancando en el 8001. La variable que sí decide el puerto es `PORT`, que `main.rs` lee
+del entorno antes del merge —ver [Despliegue](#despliegue)—. `ROCKET_ADDRESS` sí funciona
+por entorno, que es lo que importaba.
 
 ### Los cambios en la demo no sobreviven al reinicio
 
-Como la base de datos va dentro de la imagen, cualquier cliente creado o editado en
-`northwind-fullstack.vercel.app` desaparece cuando la máquina se reinicia o se
-redespliega. Es intencional —ver [Despliegue](#despliegue)— pero conviene saberlo antes
-de enseñar la demo.
+Como la base de datos va dentro de la imagen y el filesystem de Render es efímero,
+cualquier cliente creado o editado en `northwind-fullstack.vercel.app` desaparece cuando
+la instancia se reinicia o se redespliega, y la base vuelve a sus 93 clientes. Es
+intencional —ver [Despliegue](#despliegue)— pero conviene saberlo antes de enseñar la
+demo.
+
+### La primera petición tras un rato inactiva tarda ~1 minuto
+
+El plan gratuito de Render suspende la instancia tras 15 minutos sin tráfico. El panel lo
+absorbe reintentando hasta 90 segundos y avisando a los 3, así que se ve una espera
+explicada en vez de un error, pero la espera existe. Desaparece con un plan que no
+suspenda.
 
 ### El buscador filtra por nombre de empresa, no por identificador
 
@@ -695,8 +762,7 @@ operaciones de escritura están verificadas a mano.
 │   │   ├── db.rs            apertura de SQLite y Mutex<Connection>
 │   │   ├── cors.rs          fairing de CORS
 │   │   └── tests.rs         11 tests de lectura
-│   ├── Dockerfile           build multi-stage
-│   └── fly.toml             configuración de Fly.io
+│   └── Dockerfile           build multi-stage · descarga northwind.db con sha256 fijado
 ├── front/                   panel en Next.js · ver front/README.md
 ├── docs/conceptos/          documento de conceptos sobre el flujo de una petición
 └── ENUNCIADO.md             el enunciado original del proyecto

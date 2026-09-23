@@ -76,8 +76,9 @@ COPY --from=builder /build/target/release/back /usr/local/bin/back
 # 93 clientes, sin ningún paso manual de limpieza.
 #
 # Si esto tuviera que guardar datos de verdad, esta línea sería el error más grave
-# del archivo y habría que montar un volumen de Fly en /app (o, más honestamente,
-# dejar SQLite y usar una base gestionada).
+# del archivo y habría que montar un disco persistente en /app (o, más honestamente,
+# dejar SQLite y usar una base gestionada). En Render el plan Free ni siquiera ofrece
+# disco: el filesystem es efímero y cada reinicio devuelve la imagen original.
 #
 # La ruta importa: main.rs abre "northwind.db" RELATIVO al directorio de trabajo,
 # así que el archivo tiene que estar en el WORKDIR y no en cualquier otro sitio.
@@ -117,11 +118,11 @@ ADD --checksum=sha256:2f4f5c68dfcd33ba27373eae48c7a4869800c68095ee0f9f0da494f833
 #
 # El síntoma es especialmente cruel porque NO HAY NINGÚN ERROR EN LOS LOGS: los
 # logs dicen que todo va bien, porque desde el punto de vista de Rocket todo va
-# bien. Desde fuera solo se ve "connection refused", y en Fly.io, health checks que
-# fallan sin explicación.
+# bien. Desde fuera solo se ve "connection refused", y en la plataforma, health checks
+# que fallan sin explicación —en Render, el Health Check Path /health nunca pasaría—.
 #
 # 0.0.0.0 significa "escucha en todas las interfaces", que es lo que hace falta para
-# que el port forwarding de Docker y el proxy de Fly puedan entrar.
+# que el port forwarding de Docker y el proxy de Render puedan entrar.
 ENV ROCKET_ADDRESS=0.0.0.0
 
 # 🇪🇸 NOTA (por qué PORT y NO ROCKET_PORT): main.rs lee `PORT` y lo fusiona en el
@@ -140,9 +141,9 @@ ENV PORT=8001
 # Si tuviera un valor por defecto en la imagen, cambiar el origen permitido —al
 # desplegar el frontend, al cambiar de dominio— obligaría a reconstruir y volver a
 # desplegar la imagen entera para cambiar una cadena de texto. Se configura como
-# secreto de Fly, que se puede cambiar en caliente:
+# variable de entorno del servicio en Render, que se puede cambiar sin reconstruir:
 #
-#   fly secrets set CORS_ALLOWED_ORIGIN=https://mi-app.vercel.app
+#   CORS_ALLOWED_ORIGIN=https://northwind-fullstack.vercel.app
 #
 # Sin definirla, cors.rs cae en su propio valor por defecto, http://localhost:3000,
 # que es justo lo que hace falta para desarrollo local.
