@@ -575,6 +575,19 @@ en la suite automática.** Es la brecha más grande de este repositorio.
 
 ## Despliegue
 
+```mermaid
+flowchart LR
+    A["Navegador"] -->|"HTML + JS"| B["Vercel · Next.js"]
+    A -->|"fetch JSON"| C["Render · Rust + Rocket"]
+    C --> D["SQLite dentro de la imagen"]
+```
+
+Son dos servicios porque hacen trabajos distintos: Vercel solo entrega archivos que luego
+ejecuta el navegador, y Render mantiene vivo un proceso con estado, la conexión abierta a
+la base de datos. Por eso las peticiones a la API salen del navegador y van directas a
+Render, sin pasar por Vercel. El backend no puede ir en Vercel porque allí el filesystem es
+de solo lectura y efímero, y SQLite es un archivo que el proceso tiene que abrir y escribir.
+
 ### Backend en Render
 
 Un servicio Docker construido desde GitHub. La configuración entera son seis campos:
