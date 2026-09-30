@@ -27,13 +27,9 @@ Aplicación full-stack de gestión de clientes sobre la base de datos Northwind:
 
 ### 🎬 Demo en video
 
-<a href="https://youtu.be/ZMwJXwrUbmU">
-  <img src="https://img.youtube.com/vi/ZMwJXwrUbmU/maxresdefault.jpg" alt="Ver la demo en YouTube" width="640">
-</a>
+<p align="center"><a href="https://youtu.be/ZMwJXwrUbmU"><img src="https://img.youtube.com/vi/ZMwJXwrUbmU/maxresdefault.jpg" alt="Ver la demo en YouTube" width="640"></a></p>
 
-<a href="https://youtu.be/ZMwJXwrUbmU">
-  <img src="https://img.shields.io/badge/▶%20VER%20EN%20YOUTUBE-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Ver en YouTube">
-</a>
+<p align="center"><a href="https://youtu.be/ZMwJXwrUbmU"><img src="https://img.shields.io/badge/▶%20VER%20EN%20YOUTUBE-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Ver en YouTube"></a></p>
 
 </div>
 
