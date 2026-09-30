@@ -563,9 +563,19 @@ test tests::unknown_sort_by_falls_back_to_the_default ... ok
 test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
 ```
 
-Los tests levantan una instancia real de Rocket con el cliente de pruebas del framework y
-consultan la base de datos de verdad, así que ejercitan la cadena completa: enrutado,
-guards, handler, mutex, SQLite y serialización.
+Hay dos grupos, y la diferencia no es cosmética:
+
+- **11 de integración.** Levantan una instancia real de Rocket con el cliente de pruebas
+  del framework y consultan la base de datos de verdad, así que ejercitan la cadena
+  completa: enrutado, guards, handler, mutex, SQLite y serialización. **Necesitan
+  `back/northwind.db` en disco**: sin ella, cada uno se detiene con un panic que dice qué
+  archivo falta y en qué ruta lo buscó.
+- **4 unitarios** sobre `resolve_port`, la función que decide el puerto a partir de
+  `PORT`. Son pruebas puras: no tocan ni el framework ni la base.
+
+Por eso, en un clon recién hecho sin descargar la base (paso 1 de
+[Arranque local](#backend)), `cargo test` da 4 en verde y 11 en rojo. El código no está
+roto: falta el archivo.
 
 **Qué cubren:**
 
@@ -582,8 +592,12 @@ guards, handler, mutex, SQLite y serialización.
 | `unknown_id_returns_a_json_404` | El 404 sale como JSON, no como HTML |
 | `unknown_route_is_caught_as_json` | El catcher de ruta inexistente también responde JSON |
 | `responses_carry_the_cors_header` | El fairing de CORS añade su cabecera |
+| `port_falls_back_when_the_variable_is_absent` | Sin `PORT` definida, el servidor usa el 8001 |
+| `port_comes_from_the_variable_when_valid` | Un `PORT` válido (el `10000` de Render) se respeta |
+| `port_tolerates_surrounding_whitespace` | Espacios o un salto de línea alrededor del valor no lo invalidan |
+| `port_falls_back_on_unusable_values` | Vacío, no numérico, fuera de rango de `u16` o `0`: vuelve al 8001 |
 
-**Qué NO cubren:** son **solo de lectura**. No hay ni un test de `POST`, `PUT` o
+**Qué NO cubren:** ninguno **escribe**. No hay ni un test de `POST`, `PUT` o
 `DELETE`, y es una decisión consciente: se ejecutan contra el `northwind.db` real, así que
 un test de escritura modificaría el archivo de trabajo y los siguientes dejarían de ser
 reproducibles —el primer `cargo test` pasaría y el segundo fallaría por un id duplicado—.
@@ -797,7 +811,7 @@ operaciones de escritura están verificadas a mano.
 │   │   ├── models.rs        Customer, NewCustomer, UpdateCustomer, Paginated
 │   │   ├── db.rs            apertura de SQLite y Mutex<Connection>
 │   │   ├── cors.rs          fairing de CORS
-│   │   └── tests.rs         15 tests: 11 de lectura y 4 de resolve_port
+│   │   └── tests.rs         15 tests: 11 de integración y 4 unitarios de resolve_port
 │   └── Dockerfile           build multi-stage · descarga northwind.db con sha256 fijado
 ├── front/                   panel en Next.js · ver front/README.md
 ├── docs/conceptos/          documento de conceptos sobre el flujo de una petición
