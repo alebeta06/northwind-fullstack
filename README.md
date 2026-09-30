@@ -540,8 +540,27 @@ cd back && cargo test
 ```
 
 ```
-running 11 tests
-test result: ok. 11 passed; 0 failed; 0 ignored
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.40s
+     Running unittests src/main.rs (target/debug/deps/back-935cbb1c79a60dba)
+
+running 15 tests
+test tests::port_comes_from_the_variable_when_valid ... ok
+test tests::port_falls_back_on_unusable_values ... ok
+test tests::port_falls_back_when_the_variable_is_absent ... ok
+test tests::port_tolerates_surrounding_whitespace ... ok
+test tests::get_by_id_normalises_the_case ... ok
+test tests::get_by_id_returns_the_customer ... ok
+test tests::page_size_is_honoured ... ok
+test tests::company_name_filters_case_insensitively ... ok
+test tests::responses_carry_the_cors_header ... ok
+test tests::list_defaults_to_ten_per_page ... ok
+test tests::health_reports_the_93_customers ... ok
+test tests::unknown_route_is_caught_as_json ... ok
+test tests::unknown_id_returns_a_json_404 ... ok
+test tests::page_size_is_capped ... ok
+test tests::unknown_sort_by_falls_back_to_the_default ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
 ```
 
 Los tests levantan una instancia real de Rocket con el cliente de pruebas del framework y
@@ -763,7 +782,7 @@ LIKE ?` en la consulta y otro parámetro en la whitelist.
 
 ### Los tests no cubren la escritura
 
-Detallado en [Tests](#tests): las once pruebas automáticas son de lectura, y las
+Detallado en [Tests](#tests): ninguna de las quince pruebas automáticas escribe, y las
 operaciones de escritura están verificadas a mano.
 
 ---
@@ -778,7 +797,7 @@ operaciones de escritura están verificadas a mano.
 │   │   ├── models.rs        Customer, NewCustomer, UpdateCustomer, Paginated
 │   │   ├── db.rs            apertura de SQLite y Mutex<Connection>
 │   │   ├── cors.rs          fairing de CORS
-│   │   └── tests.rs         11 tests de lectura
+│   │   └── tests.rs         15 tests: 11 de lectura y 4 de resolve_port
 │   └── Dockerfile           build multi-stage · descarga northwind.db con sha256 fijado
 ├── front/                   panel en Next.js · ver front/README.md
 ├── docs/conceptos/          documento de conceptos sobre el flujo de una petición
