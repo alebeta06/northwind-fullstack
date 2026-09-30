@@ -23,11 +23,19 @@ Aplicación full-stack de gestión de clientes sobre la base de datos Northwind:
 > con backoff y, si a los 3 segundos aún no hay datos, muestra un aviso explicando que el
 > servidor está despertando. Después de la primera respuesta, todo va inmediato.
 
-<!-- TODO(vídeo): pegar aquí el botón a la demo en YouTube cuando esté grabada.
-     Plantilla lista para rellenar — solo hay que sustituir VIDEO_ID:
+<div align="center">
 
-     [![Ver la demo en YouTube](https://img.shields.io/badge/▶_Ver_la_demo-YouTube-FF0000?logo=youtube&logoColor=white&style=for-the-badge)](https://www.youtube.com/watch?v=VIDEO_ID)
--->
+### 🎬 Demo en video
+
+<a href="https://youtu.be/ZMwJXwrUbmU">
+  <img src="https://img.youtube.com/vi/ZMwJXwrUbmU/maxresdefault.jpg" alt="Ver la demo en YouTube" width="640">
+</a>
+
+<a href="https://youtu.be/ZMwJXwrUbmU">
+  <img src="https://img.shields.io/badge/▶%20VER%20EN%20YOUTUBE-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Ver en YouTube">
+</a>
+
+</div>
 
 ---
 
