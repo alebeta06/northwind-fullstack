@@ -1,13 +1,25 @@
-//! Smoke tests for the read-only endpoints.
+//! Smoke tests for the read-only endpoints, plus unit tests for port resolution.
 //!
-//! 🇪🇸 NOTA (ALCANCE, dicho por delante): esto es cobertura de HUMO, no una suite. Cada
-//! test comprueba que un endpoint responde y que lo que devuelve tiene la forma pactada;
-//! ninguno explora casos límite ni combinaciones. Lo que compran estos once tests es
+//! 🇪🇸 NOTA (DOS GRUPOS, y no se parecen): el archivo mezcla dos tipos de test que solo
+//! comparten ubicación.
+//!
+//! - **Once de integración** contra los endpoints de lectura. Construyen la aplicación
+//!   real con `client()` y hacen GET contra `northwind.db` REAL, así que NECESITAN la base
+//!   en disco: sin ella, cada uno se detiene en el `panic!` de `client()`.
+//! - **Cuatro unitarios** sobre `resolve_port`, al final del archivo. Son funciones puras:
+//!   no tocan ni Rocket ni la base, y pasan aunque `northwind.db` no exista.
+//!
+//! En un clon sin la base, `cargo test` da 4 en verde y 11 en rojo, y eso es lo esperado.
+//!
+//! 🇪🇸 NOTA (ALCANCE, dicho por delante): los once de integración son cobertura de HUMO,
+//! no una suite. Cada uno comprueba que un endpoint responde y que lo que devuelve tiene
+//! la forma pactada; ninguno explora casos límite ni combinaciones. Lo que compran es
 //! detectar en segundos que algo se rompió del todo — una ruta desmontada, un catcher mal
 //! registrado, el fairing de CORS caído— sin tener que arrancar el servidor y repasar los
-//! `curl` a mano.
+//! `curl` a mano. Los cuatro de `resolve_port` sí van a los casos raros, porque siendo una
+//! función pura cubrirlos cuesta una línea por caso.
 //!
-//! ⚠️ NINGÚN test escribe en la base. Son todos GET contra `northwind.db` REAL, así que se
+//! ⚠️ NINGÚN test escribe en la base. Los de integración son todos GET, así que se
 //! pueden ejecutar mil veces seguidas sin dejar rastro. Probar POST/PUT/DELETE exige otra
 //! conversación: o se acepta que los tests ensucien el archivo (y hay que limpiar, y un
 //! test que falle a medias deja basura), o se monta una copia temporal de la base por
@@ -23,8 +35,8 @@
 //! Las dos salidas son: (a) partir el proyecto en `src/lib.rs` + un `main.rs` fino que lo
 //! use, que es lo correcto en un proyecto grande y es una reestructuración; o (b) declarar
 //! el módulo de tests DENTRO del crate, que es esto. La (b) cuesta una línea en `main.rs`,
-//! da acceso directo a `super::rocket()` sin exponer nada en una API pública, y no toca el
-//! arranque. Para once tests de humo, la (b) gana.
+//! da acceso directo a `super::rocket()` y a `super::resolve_port()` —que es privada— sin
+//! exponer nada en una API pública, y no toca el arranque. Para quince tests, la (b) gana.
 
 use std::path::Path;
 
