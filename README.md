@@ -12,10 +12,10 @@ Aplicación full-stack de gestión de clientes sobre la base de datos Northwind:
 
 ## 🔗 Demo en vivo
 
-| | |
-| --- | --- |
-| **Aplicación** | **https://northwind-fullstack.vercel.app/** |
-| **API** | **https://northwind-api-hkvs.onrender.com/health** |
+|                |                                                    |
+| -------------- | -------------------------------------------------- |
+| **Aplicación** | **https://northwind-fullstack.vercel.app/**        |
+| **API**        | **https://northwind-api-hkvs.onrender.com/health** |
 
 > **La primera carga puede tardar hasta un minuto.** La API está en el plan gratuito de
 > Render, que suspende la instancia tras 15 minutos sin tráfico y tiene que arrancarla de
@@ -27,9 +27,9 @@ Aplicación full-stack de gestión de clientes sobre la base de datos Northwind:
 
 ### 🎬 Demo en video
 
-<p align="center"><a href="https://youtu.be/ZMwJXwrUbmU"><img src="https://img.youtube.com/vi/ZMwJXwrUbmU/maxresdefault.jpg" alt="Ver la demo en YouTube" width="640"></a></p>
+<p align="center"><a href="https://youtu.be/KIrc3B_cqvE"><img src="https://img.youtube.com/vi/KIrc3B_cqvE/maxresdefault.jpg" alt="Ver la demo en YouTube" width="640"></a></p>
 
-<p align="center"><a href="https://youtu.be/ZMwJXwrUbmU"><img src="https://img.shields.io/badge/▶%20VER%20EN%20YOUTUBE-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Ver en YouTube"></a></p>
+<p align="center"><a href="https://youtu.be/KIrc3B_cqvE"><img src="https://img.shields.io/badge/▶%20VER%20EN%20YOUTUBE-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Ver en YouTube"></a></p>
 
 </div>
 
@@ -50,20 +50,20 @@ Aplicación full-stack de gestión de clientes sobre la base de datos Northwind:
 
 ## Stack
 
-| Capa | Tecnología | Versión | Por qué |
-| --- | --- | --- | --- |
-| **Backend** | Rust · edition 2021 | toolchain 1.98 | La edition está fijada a 2021 a propósito (ver `back/Cargo.toml`) |
-| | Rocket | 0.5.1 | Primera versión estable async, sobre Tokio |
-| | rusqlite | 0.40 · feature `bundled` | SQLite se compila desde su código C y se enlaza estáticamente |
-| | serde / serde_json | 1.0 | Serialización JSON |
-| **Base de datos** | SQLite | 3.53.2 (embebida) | 93 clientes, 16 282 pedidos |
-| **Frontend** | Next.js · App Router | 15.5.25 | |
-| | React | 19.1.0 | |
-| | TypeScript | 5 · modo estricto | |
-| | Tailwind CSS | 4 | |
-| | shadcn/ui sobre Radix | dialog 1.1 · select 2.3 | Componentes copiados al proyecto, no una dependencia |
-| **Gestor de paquetes** | pnpm | 11 | |
-| **Despliegue** | Render + Vercel | | Ver [Despliegue](#despliegue) |
+| Capa                   | Tecnología            | Versión                  | Por qué                                                           |
+| ---------------------- | --------------------- | ------------------------ | ----------------------------------------------------------------- |
+| **Backend**            | Rust · edition 2021   | toolchain 1.98           | La edition está fijada a 2021 a propósito (ver `back/Cargo.toml`) |
+|                        | Rocket                | 0.5.1                    | Primera versión estable async, sobre Tokio                        |
+|                        | rusqlite              | 0.40 · feature `bundled` | SQLite se compila desde su código C y se enlaza estáticamente     |
+|                        | serde / serde_json    | 1.0                      | Serialización JSON                                                |
+| **Base de datos**      | SQLite                | 3.53.2 (embebida)        | 93 clientes, 16 282 pedidos                                       |
+| **Frontend**           | Next.js · App Router  | 15.5.25                  |                                                                   |
+|                        | React                 | 19.1.0                   |                                                                   |
+|                        | TypeScript            | 5 · modo estricto        |                                                                   |
+|                        | Tailwind CSS          | 4                        |                                                                   |
+|                        | shadcn/ui sobre Radix | dialog 1.1 · select 2.3  | Componentes copiados al proyecto, no una dependencia              |
+| **Gestor de paquetes** | pnpm                  | 11                       |                                                                   |
+| **Despliegue**         | Render + Vercel       |                          | Ver [Despliegue](#despliegue)                                     |
 
 ---
 
@@ -102,8 +102,8 @@ curl localhost:8001/health
 # {"customers":93,"sqlite":"3.53.2","status":"ok"}
 ```
 
-| Variable | Por defecto | Para qué |
-| --- | --- | --- |
+| Variable              | Por defecto             | Para qué                                         |
+| --------------------- | ----------------------- | ------------------------------------------------ |
 | `CORS_ALLOWED_ORIGIN` | `http://localhost:3000` | Origen que el navegador puede usar contra la API |
 
 En local no hace falta definir nada: el valor por defecto ya es el del frontend en desarrollo.
@@ -118,8 +118,8 @@ pnpm install
 pnpm dev                                                  # → http://localhost:3000
 ```
 
-| Variable | Por defecto | Para qué |
-| --- | --- | --- |
+| Variable              | Por defecto             | Para qué           |
+| --------------------- | ----------------------- | ------------------ |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8001` | URL base de la API |
 
 Tampoco hace falta crear ningún `.env` en local. Si la API está en otro sitio,
@@ -149,8 +149,9 @@ Un solo formato significa que el frontend escribe **una** función para manejar 
 ```bash
 curl https://northwind-api-hkvs.onrender.com/health
 ```
+
 ```json
-{"customers":93,"sqlite":"3.53.2","status":"ok"}
+{ "customers": 93, "sqlite": "3.53.2", "status": "ok" }
 ```
 
 Responder esto exige que funcione la cadena completa —estado gestionado, mutex, SQLite y
@@ -161,37 +162,57 @@ una consulta real—, así que es lo primero que conviene mirar cuando algo fall
 ```bash
 curl 'https://northwind-api-hkvs.onrender.com/customers?page=1&pageSize=2&sortBy=customerId&sortDir=asc'
 ```
+
 ```json
 {
   "data": [
-    { "customerId": "ALFKI", "companyName": "Alfreds Futterkiste",
-      "contactName": "Maria Anders", "contactTitle": "Sales Representative",
-      "address": "Obere Str. 57", "city": "Berlin", "region": "Western Europe",
-      "postalCode": "12209", "country": "Germany",
-      "phone": "030-0074321", "fax": "030-0076545" },
-    { "customerId": "ANATR", "companyName": "Ana Trujillo Emparedados y helados",
-      "contactName": "Ana Trujillo", "contactTitle": "Owner",
-      "address": "Avda. de la Constitución 2222", "city": "México D.F.",
-      "region": "Central America", "postalCode": "05021", "country": "Mexico",
-      "phone": "(5) 555-4729", "fax": "(5) 555-3745" }
+    {
+      "customerId": "ALFKI",
+      "companyName": "Alfreds Futterkiste",
+      "contactName": "Maria Anders",
+      "contactTitle": "Sales Representative",
+      "address": "Obere Str. 57",
+      "city": "Berlin",
+      "region": "Western Europe",
+      "postalCode": "12209",
+      "country": "Germany",
+      "phone": "030-0074321",
+      "fax": "030-0076545"
+    },
+    {
+      "customerId": "ANATR",
+      "companyName": "Ana Trujillo Emparedados y helados",
+      "contactName": "Ana Trujillo",
+      "contactTitle": "Owner",
+      "address": "Avda. de la Constitución 2222",
+      "city": "México D.F.",
+      "region": "Central America",
+      "postalCode": "05021",
+      "country": "Mexico",
+      "phone": "(5) 555-4729",
+      "fax": "(5) 555-3745"
+    }
   ],
-  "total": 93, "page": 1, "pageSize": 2
+  "total": 93,
+  "page": 1,
+  "pageSize": 2
 }
 ```
 
-| Parámetro | Por defecto | Notas |
-| --- | --- | --- |
-| `page` | `1` | Base 1 |
-| `pageSize` | `10` | Se recorta al rango 1–100 |
-| `companyName` | — | Coincidencia parcial, `LIKE %texto%` |
-| `sortBy` | `companyName` | `customerId`, `companyName`, `contactName`, `contactTitle`, `city`, `country` |
-| `sortDir` | `asc` | `asc` o `desc` |
+| Parámetro     | Por defecto   | Notas                                                                         |
+| ------------- | ------------- | ----------------------------------------------------------------------------- |
+| `page`        | `1`           | Base 1                                                                        |
+| `pageSize`    | `10`          | Se recorta al rango 1–100                                                     |
+| `companyName` | —             | Coincidencia parcial, `LIKE %texto%`                                          |
+| `sortBy`      | `companyName` | `customerId`, `companyName`, `contactName`, `contactTitle`, `city`, `country` |
+| `sortDir`     | `asc`         | `asc` o `desc`                                                                |
 
 El filtro es parcial y no distingue mayúsculas, así que busca dentro del nombre:
 
 ```bash
 curl 'https://northwind-api-hkvs.onrender.com/customers?companyName=ana&pageSize=3'
 ```
+
 ```
 total: 2  →  ANATR (Ana Trujillo Emparedados y helados)  ·  HANAR (Hanari Carnes)
 ```
@@ -205,11 +226,21 @@ error**: cae en el orden por defecto en silencio, algo que se explica en
 ```bash
 curl https://northwind-api-hkvs.onrender.com/customers/ALFKI
 ```
+
 ```json
-{"customerId":"ALFKI","companyName":"Alfreds Futterkiste","contactName":"Maria Anders",
- "contactTitle":"Sales Representative","address":"Obere Str. 57","city":"Berlin",
- "region":"Western Europe","postalCode":"12209","country":"Germany",
- "phone":"030-0074321","fax":"030-0076545"}
+{
+  "customerId": "ALFKI",
+  "companyName": "Alfreds Futterkiste",
+  "contactName": "Maria Anders",
+  "contactTitle": "Sales Representative",
+  "address": "Obere Str. 57",
+  "city": "Berlin",
+  "region": "Western Europe",
+  "postalCode": "12209",
+  "country": "Germany",
+  "phone": "030-0074321",
+  "fax": "030-0076545"
+}
 ```
 
 El identificador se normaliza a mayúsculas, así que `/customers/alfki` es el mismo
@@ -235,6 +266,7 @@ curl -i -X POST https://northwind-api-hkvs.onrender.com/customers \
        "contactTitle":"CTO","address":"Calle Mayor 1","city":"Madrid","region":null,
        "postalCode":"28013","country":"Spain","phone":"+34 900 000 000","fax":null}'
 ```
+
 ```
 HTTP/1.1 201 Created
 location: /customers/TEST1
@@ -269,6 +301,7 @@ curl -X PUT https://northwind-api-hkvs.onrender.com/customers/TEST1 \
        "address":"Calle Mayor 1","city":"Barcelona","region":null,"postalCode":"28013",
        "country":"Spain","phone":"+34 900 000 000","fax":null}'
 ```
+
 ```
 HTTP/1.1 200 OK
 {"customerId":"TEST1","companyName":"Pruebas SL","contactName":"Ada Lovelace",
@@ -283,6 +316,7 @@ El `customerId` va en la URL, no en el cuerpo: no se puede cambiar.
 ```bash
 curl -i -X DELETE https://northwind-api-hkvs.onrender.com/customers/TEST1
 ```
+
 ```
 HTTP/1.1 204 No Content
 ```
@@ -292,6 +326,7 @@ Y el caso que en esta base de datos es el **normal**:
 ```bash
 curl -i -X DELETE https://northwind-api-hkvs.onrender.com/customers/ALFKI
 ```
+
 ```
 HTTP/1.1 409 Conflict
 {"error":"has_orders",
@@ -306,14 +341,14 @@ desde el panel. El porqué está en
 
 ### El contrato, resumido
 
-| Método | Ruta | Éxito | Errores posibles |
-| --- | --- | --- | --- |
-| GET | `/health` | 200 | 503 si la base no responde |
-| GET | `/customers` | 200 + `Paginated<Customer>` | 500 |
-| GET | `/customers/<id>` | 200 + `Customer` | 400, 404, 500 |
-| POST | `/customers` | 201 + `Location` | 400, 409, 422, 500 |
-| PUT | `/customers/<id>` | 200 + `Customer` | 400, 404, 422, 500 |
-| DELETE | `/customers/<id>` | 204 | 400, 404, 409 si tiene pedidos, 500 |
+| Método | Ruta              | Éxito                       | Errores posibles                    |
+| ------ | ----------------- | --------------------------- | ----------------------------------- |
+| GET    | `/health`         | 200                         | 503 si la base no responde          |
+| GET    | `/customers`      | 200 + `Paginated<Customer>` | 500                                 |
+| GET    | `/customers/<id>` | 200 + `Customer`            | 400, 404, 500                       |
+| POST   | `/customers`      | 201 + `Location`            | 400, 409, 422, 500                  |
+| PUT    | `/customers/<id>` | 200 + `Customer`            | 400, 404, 422, 500                  |
+| DELETE | `/customers/<id>` | 204                         | 400, 404, 409 si tiene pedidos, 500 |
 
 ---
 
@@ -484,11 +519,11 @@ El ciclo de vida de una petición en Rocket es
 `routing → request guards → data guard → handler → responder`, y **un fallo puede ocurrir
 antes de llegar al handler**:
 
-| Fallo | Dónde ocurre | Ejemplo |
-| --- | --- | --- |
-| Ninguna ruta casa | routing | `GET /rutaquenoexiste` → 404 |
-| El cuerpo no es JSON válido | data guard | Una coma de más → 400 |
-| Es JSON, pero falta un campo | data guard | Sin `companyName` → 422 |
+| Fallo                        | Dónde ocurre | Ejemplo                      |
+| ---------------------------- | ------------ | ---------------------------- |
+| Ninguna ruta casa            | routing      | `GET /rutaquenoexiste` → 404 |
+| El cuerpo no es JSON válido  | data guard   | Una coma de más → 400        |
+| Es JSON, pero falta un campo | data guard   | Sin `companyName` → 422      |
 
 En esos casos el código del handler **nunca se ejecuta**, así que no existe ningún punto
 del programa donde construir la respuesta de error a mano. Rocket respondería con su
@@ -579,23 +614,23 @@ roto: falta el archivo.
 
 **Qué cubren:**
 
-| Test | Qué comprueba |
-| --- | --- |
-| `health_reports_the_93_customers` | La cadena entera responde y cuenta 93 clientes |
-| `list_defaults_to_ten_per_page` | Los valores por defecto de la paginación |
-| `page_size_is_honoured` | `pageSize` cambia el tamaño de la página |
-| `page_size_is_capped` | `pageSize` se recorta a 100 |
-| `company_name_filters_case_insensitively` | El filtro parcial sin distinguir mayúsculas |
-| `unknown_sort_by_falls_back_to_the_default` | La whitelist del `ORDER BY` no rompe |
-| `get_by_id_returns_the_customer` | Lectura por identificador |
-| `get_by_id_normalises_the_case` | `/customers/alfki` y `/customers/ALFKI` son el mismo recurso |
-| `unknown_id_returns_a_json_404` | El 404 sale como JSON, no como HTML |
-| `unknown_route_is_caught_as_json` | El catcher de ruta inexistente también responde JSON |
-| `responses_carry_the_cors_header` | El fairing de CORS añade su cabecera |
-| `port_falls_back_when_the_variable_is_absent` | Sin `PORT` definida, el servidor usa el 8001 |
-| `port_comes_from_the_variable_when_valid` | Un `PORT` válido (el `10000` de Render) se respeta |
-| `port_tolerates_surrounding_whitespace` | Espacios o un salto de línea alrededor del valor no lo invalidan |
-| `port_falls_back_on_unusable_values` | Vacío, no numérico, fuera de rango de `u16` o `0`: vuelve al 8001 |
+| Test                                          | Qué comprueba                                                     |
+| --------------------------------------------- | ----------------------------------------------------------------- |
+| `health_reports_the_93_customers`             | La cadena entera responde y cuenta 93 clientes                    |
+| `list_defaults_to_ten_per_page`               | Los valores por defecto de la paginación                          |
+| `page_size_is_honoured`                       | `pageSize` cambia el tamaño de la página                          |
+| `page_size_is_capped`                         | `pageSize` se recorta a 100                                       |
+| `company_name_filters_case_insensitively`     | El filtro parcial sin distinguir mayúsculas                       |
+| `unknown_sort_by_falls_back_to_the_default`   | La whitelist del `ORDER BY` no rompe                              |
+| `get_by_id_returns_the_customer`              | Lectura por identificador                                         |
+| `get_by_id_normalises_the_case`               | `/customers/alfki` y `/customers/ALFKI` son el mismo recurso      |
+| `unknown_id_returns_a_json_404`               | El 404 sale como JSON, no como HTML                               |
+| `unknown_route_is_caught_as_json`             | El catcher de ruta inexistente también responde JSON              |
+| `responses_carry_the_cors_header`             | El fairing de CORS añade su cabecera                              |
+| `port_falls_back_when_the_variable_is_absent` | Sin `PORT` definida, el servidor usa el 8001                      |
+| `port_comes_from_the_variable_when_valid`     | Un `PORT` válido (el `10000` de Render) se respeta                |
+| `port_tolerates_surrounding_whitespace`       | Espacios o un salto de línea alrededor del valor no lo invalidan  |
+| `port_falls_back_on_unusable_values`          | Vacío, no numérico, fuera de rango de `u16` o `0`: vuelve al 8001 |
 
 **Qué NO cubren:** ninguno **escribe**. No hay ni un test de `POST`, `PUT` o
 `DELETE`, y es una decisión consciente: se ejecutan contra el `northwind.db` real, así que
@@ -629,21 +664,21 @@ de solo lectura y efímero, y SQLite es un archivo que el proceso tiene que abri
 
 Un servicio Docker construido desde GitHub. La configuración entera son seis campos:
 
-| Campo | Valor |
-| --- | --- |
-| Región | Virginia |
-| Plan | Free |
-| Runtime | Docker |
-| Build Context | `back` |
-| Dockerfile Path | `back/Dockerfile` |
-| Health Check Path | `/health` |
+| Campo             | Valor             |
+| ----------------- | ----------------- |
+| Región            | Virginia          |
+| Plan              | Free              |
+| Runtime           | Docker            |
+| Build Context     | `back`            |
+| Dockerfile Path   | `back/Dockerfile` |
+| Health Check Path | `/health`         |
 
 El contexto es `back` y no la raíz porque el `Dockerfile` copia `Cargo.toml`, `Cargo.lock`
 y `src/` con rutas relativas al backend; con la raíz como contexto el build subiría también
 `front/` y no encontraría nada donde lo busca.
 
-*(El primer destino fue Fly.io. Se descartó cuando su trial —7 días o 2 horas de máquina—
-expiró: detrás no hay plan gratuito.)*
+_(El primer destino fue Fly.io. Se descartó cuando su trial —7 días o 2 horas de máquina—
+expiró: detrás no hay plan gratuito.)_
 
 **Por qué no Vercel también para el backend.** Vercel ejecuta funciones serverless: el
 filesystem es de solo lectura salvo `/tmp`, y además efímero entre invocaciones. SQLite no
@@ -680,8 +715,8 @@ Cuatro detalles que hacen que funcione:
   actualizar la base pasa a ser un cambio explícito y revisable en el diff.
 
 - **`ROCKET_ADDRESS=0.0.0.0` es la línea que hace el contenedor alcanzable.** Rocket
-  escucha en `127.0.0.1` por defecto, que dentro de un contenedor es el loopback *del
-  contenedor*: el servidor arranca, anuncia tan tranquilo que se lanzó, responde a un
+  escucha en `127.0.0.1` por defecto, que dentro de un contenedor es el loopback _del
+  contenedor_: el servidor arranca, anuncia tan tranquilo que se lanzó, responde a un
   curl hecho desde dentro y **rechaza toda conexión que venga de fuera**. Lo cruel del
   síntoma es que **no hay ningún error en los logs** —desde el punto de vista de Rocket
   todo va bien—; desde fuera solo se ve `connection refused`, y en la plataforma, health
@@ -699,7 +734,7 @@ Lo que obliga a leerla **explícitamente** es Figment, la capa de configuración
 `main.rs` fija el puerto con `Config::figment().merge(("port", …))`, y en Figment un
 `merge` tiene más precedencia que las variables de entorno. Es decir, `ROCKET_PORT` —la
 vía normal de Rocket— **no movería nada**: el merge la pisaría. Por eso `main.rs` lee
-`PORT` del entorno *antes* del merge y lo mete ahí, cayendo en 8001 si nadie dice nada.
+`PORT` del entorno _antes_ del merge y lo mete ahí, cayendo en 8001 si nadie dice nada.
 Así `cargo run` sigue funcionando sin exportar ninguna variable y Render puede inyectar
 el suyo sin reconstruir la imagen.
 
