@@ -46,6 +46,15 @@ const COLD_START_BUDGET_MS = 90_000;
  */
 const WAKING_NOTICE_AFTER_MS = 3_000;
 
+/**
+ * Inactividad tras la cual el servidor puede volver a estar suspendido.
+ *
+ * 🇪🇸 NOTA: Render suspende la instancia tras 15 minutos sin tráfico. Se usa un
+ * margen menor porque equivocarse hacia este lado es barato: el aviso solo aparece si
+ * la carga pasa de 3 segundos, y con el servidor despierto eso no pasa.
+ */
+const IDLE_SUSPEND_MS = 10 * 60_000;
+
 const FIRST_RETRY_DELAY_MS = 500;
 const MAX_RETRY_DELAY_MS = 5_000;
 
@@ -98,11 +107,11 @@ export function useCustomers(params: ListParams) {
   const [reloadToken, setReloadToken] = useState(0);
   const reload = useCallback(() => setReloadToken((n) => n + 1), []);
 
-  // 🇪🇸 NOTA (por qué un ref y no un estado): marca si el servidor ya contestó alguna
-  // vez, y solo sirve para decidir dentro del efecto. En un estado, cambiarlo
+  // 🇪🇸 NOTA (por qué un ref y no un estado): guarda cuándo contestó el servidor por
+  // última vez, y solo sirve para decidir dentro del efecto. En un estado, cambiarlo
   // provocaría un render de más por cada carga y tendría que entrar en las
   // dependencias del efecto, que volvería a lanzarse al primer éxito.
-  const answeredOnce = useRef(false);
+  const lastAnswerAt = useRef<number | null>(null);
 
   const { page, pageSize, companyName, sortBy, sortDir } = params;
 
@@ -110,12 +119,18 @@ export function useCustomers(params: ListParams) {
     const controller = new AbortController();
     const startedAt = Date.now();
 
-    // 🇪🇸 DECISIÓN (el reintento cubre SOLO las cargas anteriores al primer éxito):
-    // una vez que el servidor ha contestado, está despierto, y un fallo de red
-    // posterior ya no es un arranque en frío — es la red del usuario, o el servidor
-    // caído de verdad. Insistir 90 segundos ahí dejaría la tabla en un "cargando"
-    // larguísimo en lugar de decir lo que pasa, que es peor que el error.
-    const coldStartPossible = !answeredOnce.current;
+    // 🇪🇸 DECISIÓN (aviso y reintento cubren SOLO las cargas que pueden encontrarse el
+    // servidor dormido): la primera, y cualquiera tras un rato sin respuestas. Si el
+    // servidor acaba de contestar, está despierto, y un fallo de red ya no es un
+    // arranque en frío — es la red del usuario, o el servidor caído de verdad.
+    // Insistir 90 segundos ahí dejaría la tabla en un "cargando" larguísimo en lugar
+    // de decir lo que pasa, que es peor que el error.
+    //
+    // ⚠️ No basta con "ya contestó alguna vez": una pestaña abierta sobrevive a la
+    // suspensión, y su siguiente carga se encontraba el servidor dormido sin aviso.
+    const coldStartPossible =
+      lastAnswerAt.current === null ||
+      startedAt - lastAnswerAt.current > IDLE_SUSPEND_MS;
 
     setState((previous) => ({
       ...previous,
@@ -146,7 +161,7 @@ export function useCustomers(params: ListParams) {
             controller.signal,
           );
 
-          answeredOnce.current = true;
+          lastAnswerAt.current = Date.now();
           setState({
             page: {
               data: result.data,
