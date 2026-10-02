@@ -52,6 +52,11 @@ const WAKING_NOTICE_AFTER_MS = 3_000;
  * 🇪🇸 NOTA: Render suspende la instancia tras 15 minutos sin tráfico. Se usa un
  * margen menor porque equivocarse hacia este lado es barato: el aviso solo aparece si
  * la carga pasa de 3 segundos, y con el servidor despierto eso no pasa.
+ *
+ * El margen también cuesta algo en los reintentos: entre 10 y 15 minutos de
+ * inactividad el servidor sigue despierto, así que un fallo de red real se reintenta
+ * hasta 90 segundos antes de mostrarse como error. Se acepta: es el mismo trato que
+ * recibe la primera carga, y solo afecta a esa ventana de 5 minutos.
  */
 const IDLE_SUSPEND_MS = 10 * 60_000;
 
