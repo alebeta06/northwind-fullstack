@@ -21,7 +21,9 @@ Aplicación full-stack de gestión de clientes sobre la base de datos Northwind:
 > Render, que suspende la instancia tras 15 minutos sin tráfico y tiene que arrancarla de
 > nuevo con la siguiente petición. El panel lo da por hecho: reintenta hasta 90 segundos
 > con backoff y, si a los 3 segundos aún no hay datos, muestra un aviso explicando que el
-> servidor está despertando. Después de la primera respuesta, todo va inmediato.
+> servidor está despertando. Lo mismo vale para una pestaña que se deja abierta: tras más
+> de 10 minutos sin respuestas, la siguiente carga vuelve a contar con que el servidor
+> puede estar dormido.
 
 <div align="center">
 
@@ -760,8 +762,9 @@ Las dos consecuencias del plan Free, las dos asumidas:
 - **La instancia se suspende tras 15 minutos sin tráfico** y tarda alrededor de un minuto
   en volver. El frontend lo trata como lo que es —una espera, no un error—: reintenta con
   backoff exponencial hasta 90 segundos y, si a los 3 segundos no hay datos, muestra un
-  aviso de que el servidor está despertando. Solo reintenta antes de la primera respuesta;
-  a partir de ahí un fallo ya es un fallo de verdad y se muestra como tal. Verificado de
+  aviso de que el servidor está despertando. Solo reintenta en la primera carga o tras
+  más de 10 minutos sin respuestas, que es cuando el servidor puede estar dormido; si
+  acaba de contestar, un fallo ya es un fallo de verdad y se muestra como tal. Verificado de
   extremo a extremo contra el despliegue real.
 
 ### Frontend en Vercel
